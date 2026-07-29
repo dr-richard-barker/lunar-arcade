@@ -109,7 +109,14 @@ ends.
 
 Single file each: `index.html`, `style.css`, `game.js` (no modules, no build).
 
-### Regolith Farm — in development
+### Lunar Farm — lives in its own repository
+
+The farm sim folded into **[Lunar Sims](https://dr-richard-barker.github.io/LunarSims/farm/)**
+([source](https://github.com/dr-richard-barker/LunarSims)) rather than being built twice. Same
+premise — light against power, water against recycling losses, crop choice against a colony that
+has to be fed — carried out at the Marius Hills skylight, with the regolith-into-soil idea kept
+as a mechanic: fresh beds run at about two-thirds yield until roots and stubble have been worked
+through them.
 
 ## Copyright
 
