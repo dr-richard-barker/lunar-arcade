@@ -173,6 +173,49 @@
     return out;
   }
 
+  /* Solar is 'aboveOr0', so once the surface deck fills there is still an
+     entire 26-level sky to build in — and at scale that is the difference
+     between a colony that recharges its batteries during the lunar day and one
+     that browns out every night. The director only ever asked for level 0, so a
+     full surface deck capped generation permanently: population stalled at 246
+     not for want of space (683 cells were free) but because night shedding
+     zeroed its income and it could never afford anything again.
+
+     Level +1 is deliberately left as a corridor deck rather than solar: it is
+     the only level a garden dome can occupy, and 1-wide corridors can be
+     cleared to make room for one whereas a spread solar farm cannot. */
+  function raiseSolar(s, floor) {
+    var r = growOnLevel(s, 'solar', 0, floor);
+    if (r && r !== 'broke') return r;
+    var broke = (r === 'broke');
+
+    for (var l = 2; l <= 5; l++) {
+      var up = growOnLevel(s, 'solar', l, floor);
+      if (up && up !== 'broke') return up;
+      if (up === 'broke') broke = true;
+    }
+    // nothing to attach to up there yet: a ladder for access, then a deck
+    if (!count(s, 'ladder')) {
+      var r0 = rowEnds(s, 0);
+      if (r0) {
+        var lc = [r0[1] + 1, r0[0] - 1, C.GRID_W - 4, 3];
+        for (var li = 0; li < lc.length; li++) {
+          var lchk = LH.checkPlace(s, 'ladder', lc[li], 0, 5);
+          if (lchk.ok && afford(s, lchk.cost, floor)) {
+            LH.place(s, 'ladder', lc[li], 0, 5);
+            return { deck: true };
+          }
+        }
+      }
+    }
+    for (var l2 = 1; l2 <= 3; l2++) {
+      var deck = growOnLevel(s, 'corridor', l2, floor);
+      if (deck && deck !== 'broke') return deck;
+      if (deck === 'broke') broke = true;
+    }
+    return broke ? 'broke' : null;
+  }
+
   function act(s, msg, r) {
     if (!r || r === 'broke') return false;
     LH.log(s, 'auto', 'Autopilot: ' + msg + '.');
@@ -197,7 +240,12 @@
 
     /* 0.5 - insolvency rescue: a colony in the red sells the gym first */
     var balNow = (st.income || 0) - (st.upkeep || 0);
-    if (s.credits < -5000 && balNow < 0) {
+    /* Income legitimately falls to nothing during the fourteen-day night, so one
+       day in the red means nothing. Selling on it destroyed the colony's own
+       medical bays and schools every lunar cycle — 22 distress sales per 3,000
+       days — and morale never recovered in between. */
+    s.autoDeficitDays = balNow < 0 ? (s.autoDeficitDays || 0) + 1 : 0;
+    if (s.credits < -5000 && balNow < 0 && s.autoDeficitDays >= 16) {
       var cut = null, cutUp = 0;
       for (var ci in s.inst) {
         var cinst = s.inst[ci], cm = LH.MOD[cinst.mid];
@@ -253,7 +301,7 @@
     if (s.autoShaftBot === undefined) s.autoShaftBot = -8;
 
     if (count(s, 'solar') === 0)
-      return act(s, 'raised a solar array', growOnLevel(s, 'solar', 0, 3000));
+      return act(s, 'raised a solar array', raiseSolar(s, 3000));
     if (count(s, 'battery') === 0)
       return act(s, 'installed a battery bank', growOnLevel(s, 'battery', 0, 3000));
 
@@ -356,7 +404,7 @@
     if (headroom < 12 || solarGen < rechargeNeed * 0.95) {
       if (s.tier >= 3 && act(s, 'commissioned a buried fission plant', deepBuild(s, 'fission', 3000)))
         return true;
-      if (act(s, 'raised another solar array', growOnLevel(s, 'solar', 0, 3000))) return true;
+      if (act(s, 'raised another solar array', raiseSolar(s, 3000))) return true;
     }
     if ((st.powerCap || 0) < Math.max(0, demand - steadyGen) * (C.LUNAR_CYCLE / 2) * 1.0) {
       var rBat = growOnLevel(s, 'battery', 0, 3000);
@@ -401,6 +449,53 @@
     if (foodNet < need * C.FOOD_PER_POP)
       { if (act(s, 'expanded hydroponics', growAny(s, 'hydro', subs, 3000))) return true; }
 
+    /* 4.5 - the charter's two towers, claimed EARLY. The observatory and garden
+       dome gate tier 5, cost ₵42k and ₵48k against a colony that ends with
+       millions, and need clear sky. Left in the prestige branch they were never
+       built at all: a rich colony always finds housing or amenities to do first,
+       so the late branches simply never run. */
+    if (s.credits > 120000) {
+      /* By the time the colony is this rich the solar farm has paved the sky, so
+         the towers can never find a gap. Two arrays out of a hundred buys a
+         whole charter tier — but only once losing them is genuinely incidental. */
+      var mayClearSky = s.credits > 500000 && count(s, 'solar') > 20
+        ? ['corridor', 'solar'] : ['corridor'];
+      if (s.tier >= LH.MOD.obs.tier && count(s, 'obs') === 0) {
+        var rObsE = buildTower(s, 'obs', 60000, mayClearSky);
+        if (rObsE) return act(s, 'built the observatory', rObsE);
+      }
+      if (s.tier >= LH.MOD.garden.tier && count(s, 'garden') === 0) {
+        var rGarE = buildTower(s, 'garden', 60000, mayClearSky);
+        if (rGarE) return act(s, 'grew a garden dome', rGarE);
+      }
+    }
+
+    /* 4.8 - amenities BEFORE housing. Housing used to win every priority
+       contest, so at scale the colony added berths faster than it added reasons
+       to live in them: it hit tier 5 at population 540 and then fell apart with
+       morale at 27. Coverage first, then people. */
+    /* Amenity coverage is the other half of morale, and these are cheap now.
+       Each want falls through when it cannot be met rather than aborting the
+       director — an unaffordable mess hall used to stop the medical bay, the
+       exercise deck and everything below it from ever being considered, which
+       is why a colony with a perfect transit spine still had zero coverage. */
+    if (s.morale < 78 || s.pop > 10) {
+      var popN = Math.round(s.pop);
+      var wants = [
+        ['mess',   Math.max(1, Math.ceil(popN / 26)),            'opened a mess hall'],
+        ['gym',    popN > 14 ? Math.max(1, Math.ceil(popN / 55)) : 0, 'fitted an exercise deck'],
+        ['med',    popN > 14 ? Math.max(1, Math.ceil(popN / 70)) : 0, 'staffed a medical bay'],
+        ['rec',    s.tier >= 3 ? Math.ceil(popN / 90) : 0,        'inflated a rec dome'],
+        ['school', s.tier >= 3 && popN > 30 ? 1 : 0,              'opened the school']
+      ];
+      for (var wi = 0; wi < wants.length; wi++) {
+        if (count(s, wants[wi][0]) >= wants[wi][1]) continue;
+        var rW = growAny(s, wants[wi][0], subs, 3000);
+        if (rW === null) rW = makeRoom(s, wants[wi][0], subs, 3000);
+        if (act(s, wants[wi][2], rW)) return true;
+      }
+    }
+
     /* 5 - grow the settlement: housing fills itself, people pay rent.
        Housing is the engine of the whole economy - build it eagerly. */
     var vacancy = Math.floor(st.housing || 0) - Math.round(s.pop);
@@ -410,7 +505,10 @@
     var deepSubs = subs.filter(function (l) { return l <= -3; });
     var canAbsorb = (st.o2Bal || 0) > 6 && (st.waterBal || 0) > 5.5 && (st.foodBal || 0) > 5 &&
                     (st.shed || 0) === 0;
-    if (vacancy < 4 && s.morale > 40 && canAbsorb) {
+    /* Adding berths when morale is already sinking just spreads the same
+       amenities over more people. Let it recover first. */
+    var moraleHeadroom = s.pop < 120 || (s.morale > 52 && (st.moraleTarget || 0) > 56);
+    if (vacancy < 4 && s.morale > 40 && canAbsorb && moraleHeadroom) {
       var hm = s.tier >= 2 ? 'block' : 'pod';
       var rH = growAny(s, hm, deepSubs, 5000);
       if (rH === null) rH = growAny(s, 'pod', deepSubs, 5000);
@@ -440,10 +538,19 @@
     }
     if (spineCol !== null) {
       var spKind = s.tier >= 3 ? 'express' : 'lift';
-      var spBot = s.autoShaftBot || -8;
+      /* A reserved column is clear at every level, so a new shaft may as well go
+         as deep as the treasury allows. Pinning it to the existing floor meant
+         every shaft stopped at -8 and nothing could ever be built below. */
+      var spBot = Math.max(-22, -(LH.MOD[spKind].span - 1), -C.MAX_DOWN);
+      var spTry = LH.checkPlace(s, spKind, spineCol, 0, spBot);
+      while (spBot < -6 && (!spTry.ok || !afford(s, spTry.cost, 3000))) {
+        spBot += 2;
+        spTry = LH.checkPlace(s, spKind, spineCol, 0, spBot);
+      }
       var spChk = LH.checkPlace(s, spKind, spineCol, 0, spBot);
       if (spChk.ok && afford(s, spChk.cost, 3000)) {
         LH.place(s, spKind, spineCol, 0, spBot);
+        if (spBot < (s.autoShaftBot || -8)) s.autoShaftBot = spBot;
         // a front door beside it, wherever there is room on the surface deck
         for (var ao = 1; ao <= 6; ao++) {
           var aOpts = [spineCol + ao, spineCol - LH.MOD.airlock.w - ao + 1];
@@ -560,29 +667,6 @@
       }
     }
 
-    /* 7 - morale: amenities, scaled to the population they serve */
-    /* Amenity coverage is the other half of morale, and these are cheap now.
-       Each want falls through when it cannot be met rather than aborting the
-       director — an unaffordable mess hall used to stop the medical bay, the
-       exercise deck and everything below it from ever being considered, which
-       is why a colony with a perfect transit spine still had zero coverage. */
-    if (s.morale < 78 || s.pop > 10) {
-      var popN = Math.round(s.pop);
-      var wants = [
-        ['mess',   Math.max(1, Math.ceil(popN / 26)),            'opened a mess hall'],
-        ['gym',    popN > 14 ? Math.max(1, Math.ceil(popN / 55)) : 0, 'fitted an exercise deck'],
-        ['med',    popN > 14 ? Math.max(1, Math.ceil(popN / 70)) : 0, 'staffed a medical bay'],
-        ['rec',    s.tier >= 3 ? Math.ceil(popN / 90) : 0,        'inflated a rec dome'],
-        ['school', s.tier >= 3 && popN > 30 ? 1 : 0,              'opened the school']
-      ];
-      for (var wi = 0; wi < wants.length; wi++) {
-        if (count(s, wants[wi][0]) >= wants[wi][1]) continue;
-        var rW = growAny(s, wants[wi][0], subs, 3000);
-        if (rW === null) rW = makeRoom(s, wants[wi][0], subs, 3000);
-        if (act(s, wants[wi][2], rW)) return true;
-      }
-    }
-
     /* 8 - charter progress: build whatever the next tier explicitly needs */
     var prog = LH.tierProgress(s);
     if (prog) {
@@ -667,7 +751,7 @@
      probed by placing a module and immediately removing it, which never built
      anything and leaked credits. This runs a ladder up the outside of the
      colony and stacks corridor decks on the surface roof to stand on. */
-  function buildTower(s, mid, floor) {
+  function buildTower(s, mid, floor, clearAlso) {
     var m = LH.MOD[mid], target = Math.max(1, m.minL || 1);
     floor = floor === undefined ? 8000 : floor;
 
@@ -710,15 +794,23 @@
         if (r.ok) return r;
       }
     }
+    /* The deck is continuous by the time the colony is rich, so a nine-wide
+       dome will not find a gap beside the ladder. Clear one. */
+    var cleared = makeRoom(s, mid, [target], floor, clearAlso);
+    if (cleared && cleared !== 'broke') return cleared;
     return null;
   }
 
   /* Clear a run of corridors so a wide module can fit. A mature colony can
      have plenty of free cells and still no seven-cell gap for a Rec Dome.
      Surveys first and only demolishes once the placement is certain. */
-  function makeRoom(s, mid, levels, floor) {
+  /* `clearable` says what may be demolished to make space, corridors only by
+     default. Sacrificing a solar array is safe for a rich colony with a hundred
+     of them and ruinous for a poor one with four, so the caller decides. */
+  function makeRoom(s, mid, levels, floor, clearable) {
     var m = LH.MOD[mid];
     if (m.w < 2) return null;
+    clearable = clearable || ['corridor'];
     for (var li = 0; li < levels.length; li++) {
       var l = levels[li];
       if (!LH.levelOk(m, l)) continue;
@@ -728,7 +820,7 @@
         for (var k2 = 0; k2 < m.w; k2++) {
           var cx = x + k2, occ = LH.at(s, cx, l);
           if (occ) {
-            if (occ.mid !== 'corridor') { ok = false; break; }
+            if (clearable.indexOf(occ.mid) < 0) { ok = false; break; }
             if (!seen[occ.iid]) { seen[occ.iid] = true; victims.push(occ); }
           }
           if (!supported) {
@@ -738,13 +830,26 @@
         }
         if (!ok || !supported || !victims.length) continue;
         if (s.credits - m.cost < (floor === undefined ? 8000 : floor)) return null;
-        victims.forEach(function (v) { LH.remove(s, v.iid); });
+        /* Record the exact cells being freed: the replacement is rarely the same
+           width as what it displaces, and any cell left empty severs the run and
+           strands everything beyond it. */
+        var freed = [];
+        victims.forEach(function (v) {
+          v.cells.forEach(function (c) { freed.push([c[0], c[1]]); });
+          LH.remove(s, v.iid);
+        });
         var chk = LH.checkPlace(s, mid, x, l, l);
         if (chk.ok) {
           var r = LH.place(s, mid, x, l, l);
-          if (r.ok) return r;
+          if (r.ok) {
+            // backfill the offcuts so the level stays continuous
+            freed.forEach(function (c) {
+              if (!LH.occupied(s, c[0], c[1])) LH.place(s, 'corridor', c[0], c[1], c[1]);
+            });
+            return r;
+          }
         }
-        victims.forEach(function (v) { LH.place(s, 'corridor', v.x, v.l, v.l); });
+        victims.forEach(function (v) { LH.place(s, v.mid, v.x, v.l, v.l); });
         return null;                                     // one attempt, never thrash
       }
     }

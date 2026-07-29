@@ -229,14 +229,59 @@ simulation moved the AI a whole charter tier.
 Scenario 4 (save/load) was added to the harness and passes. Distress sales rose from 7 to 22 per
 3,000 days and remain tracked as known debt for Phase 3.
 
-### Phase 3 — Close the autopilot capacity gap (~190 → 220+)
+### Phase 3 — Close the autopilot capacity gap ✅ done
 
-The harness reports the blockers directly: *Population 192 / 220; Rec Dome; Refinery*. The spine,
-morale and shielding problems are fixed; what remains is capacity and late-game
-stability. Diagnose with the Phase 1 harness rather than by eye: why housing stalls near 190, and
-what destabilises the colony after roughly 4,000 days. Also worth fixing: the director only builds a
-He-3 extractor when nearly broke (`js/autopilot.js:599`), so a healthy colony never touches the most
-profitable export in the game.
+Target was tier 4 (population 220). It reached **tier 5 (City)**, stable across 3,000 days:
+
+| | Before Phase 3 | After |
+|---|---:|---:|
+| Charter tier | 3 (Settlement) | **5 (City)** |
+| Population | 246 | **814** (peak 819) |
+| Morale | 52 | **90.6** |
+| Treasury | ₵13,464 | **₵20,944,023** |
+| Deaths | 0 | 0 |
+| Distress sales / 3,000 days | 22 | **0** |
+| Orphan demolitions / 3,000 days | 9 | **0** |
+
+Both known-debt items are cleared. Remaining blockers for tier 6: population 814/1000 and the Deep
+Core Complex, which needs a shaft below level −18.
+
+**The finding that mattered.** The director was capped at 246 people, and it was not for want of
+space — 683 cells were free in the dug region, with gaps up to 39 wide. It was cash: `checkPlace`
+rejects a ₵31,000 habitat block when the treasury holds ₵13,464, and the treasury never grew because
+**the surface deck was full at 136 columns and the director only ever asked for solar at level 0**.
+Generation stopped, batteries could not recharge across the fourteen-day day, the grid shed ~35
+modules every night, income fell to nothing, and each night's cash dive triggered distress sales of
+the colony's own medical bays and schools.
+
+Solar is `aboveOr0`. There were 26 empty levels overhead. Teaching the director to build arrays in the
+sky — `raiseSolar` — is what unlocked everything downstream. The "hollow vertical axis" this document
+flagged in Phase 4 turned out to be exactly where the missing power headroom was.
+
+Also fixed:
+
+- **A lunar night is not an emergency.** The insolvency rescue fired on a single day in the red, so it
+  sold amenities every lunar cycle and morale never recovered between them. It now requires sixteen
+  consecutive deficit days.
+- **New spine shafts sink as deep as they can afford** rather than being pinned to the existing floor,
+  which had frozen every shaft at −8.
+- **The charter's towers are claimed early.** The observatory and garden dome gate tier 5, cost ₵42k
+  and ₵48k, and need clear sky — but sat in the prestige branch behind `credits > 90,000`. A rich
+  colony always finds housing or amenities to do first, so late branches never run at all. Ordering,
+  not affordability, was the bug.
+- **Amenities now precede housing.** Housing won every contest, so the colony added berths faster than
+  reasons to live in them: it hit tier 5 at population 540 and then fell apart at morale 27. Growth is
+  additionally gated on morale headroom — do not grow into misery.
+- **`makeRoom` backfills its offcuts.** Clearing two 4-wide arrays for a 6-wide observatory left a
+  2-cell hole that stranded the rest of the deck — 38 orphan demolitions. Straight from this
+  document's own invariant about severing a run.
+
+**Method note.** Three attempts made things actively worse and were reverted: `deepenSpine` at ₵74,000
+a go drained the mid-game and bankrupted the colony at day 1758; a reserved sky band blocked the very
+solar-aloft fix that was working; and clearing solar for towers while poor collapsed the power margin.
+The file drifted into an incoherent state during that churn, so it was reset to the last green commit
+and the three changes that measurably helped were re-applied as one coherent edit. The harness is what
+made each of those judgements possible in minutes rather than by argument.
 
 ### Phase 4 — Give the endgame a reason to exist
 
