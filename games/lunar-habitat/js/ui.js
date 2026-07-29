@@ -274,6 +274,7 @@
   LH.toggleSandbox = function () {
     var s = LH.S;
     s.sandbox = !s.sandbox;
+    if (s.sandbox) s.sandboxEverUsed = true;
     var b = document.getElementById('btn-sandbox');
     if (b) b.classList.toggle('on', !!s.sandbox);
     LH.buildPalette(s);

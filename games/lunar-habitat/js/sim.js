@@ -275,6 +275,12 @@
       }
     }
 
+    // cumulative run statistics — the league table scores on these
+    if (s.pop > (s.peakPop || 0)) s.peakPop = s.pop;
+    s.totalExports = (s.totalExports || 0) + s.stats.exports;
+    s.totalIncome = (s.totalIncome || 0) + income;
+    if (crisis.length) s.crisisDays = (s.crisisDays || 0) + 1;
+
     LH.solveAmenity(s);
     events(s, on);
     checkTier(s);

@@ -182,3 +182,28 @@ footer.end .stamp{letter-spacing:.2em; color:#3f4f63}
   .log .ln{grid-template-columns:auto 1fr; gap:4px 10px}
   .log .ts{grid-column:1/-1}
 }
+
+/* ---------------- contract record ---------------- */
+.norec{
+  border:1px dashed var(--line2); border-radius:10px; padding:22px;
+  color:var(--muted); font-size:12.5px; text-align:center;
+}
+.recwrap{
+  border:1px solid var(--line); border-radius:10px; overflow-x:auto;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+}
+table.rec{border-collapse:collapse; width:100%; font-size:11.5px; min-width:700px}
+table.rec th{
+  text-align:left; padding:11px 14px; font-size:10px; letter-spacing:.18em;
+  color:var(--muted); font-weight:700; border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.015); white-space:nowrap;
+}
+table.rec td{padding:10px 14px; border-bottom:1px solid #111a26; white-space:nowrap; color:#a7b6c9}
+table.rec tbody tr:last-child td{border-bottom:0}
+table.rec tbody tr:hover{background:rgba(255,255,255,.02)}
+table.rec td.rk{color:var(--muted); font-weight:700}
+table.rec td.sc{color:var(--amber); font-weight:800; font-size:12.5px}
+table.rec td.w{color:var(--green); font-weight:700}
+table.rec td.l{color:var(--red); font-weight:700}
+table.rec td.dt{color:#4d5f76}
+table.rec .ag{color:var(--cyan); font-weight:700}

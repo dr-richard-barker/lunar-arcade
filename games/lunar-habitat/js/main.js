@@ -99,10 +99,11 @@
 
     window.addEventListener('keydown', function (e) {
       if (e.code === 'Space') { spaceDown = true; e.preventDefault(); }
-      if (e.key === 'Escape') { LH.setTool(null); ui.tool = null; LH.buildPalette(LH.S); LH.setHint(null); hideModal(); LH.hideReport(); }
+      if (e.key === 'Escape') { LH.setTool(null); ui.tool = null; LH.buildPalette(LH.S); LH.setHint(null); hideModal(); LH.hideReport(); LH.hideLeague(); }
       if (e.key === 'x' || e.key === 'X') LH.setTool('bulldoze');
       if (e.key === 'b' || e.key === 'B') LH.toggleAuto();
       if (e.key === 's' || e.key === 'S') LH.toggleSandbox();
+      if (e.key === 'l' || e.key === 'L') { if (LH.leagueOpen()) LH.hideLeague(); else LH.showLeague(); }
       if (e.key === 'r' || e.key === 'R') { if (LH.reportOpen()) LH.hideReport(); else LH.showReport(); }
       if (e.key === '?' || e.key === '/') showModal();
       if (e.key >= '1' && e.key <= '4') setSpeed([0, 1, 3, 8][+e.key - 1]);
@@ -125,6 +126,7 @@
     document.getElementById('btn-auto').onclick = LH.toggleAuto;
     document.getElementById('btn-report').onclick = function () { LH.showReport(); };
     document.getElementById('btn-sandbox').onclick = LH.toggleSandbox;
+    document.getElementById('btn-league').onclick = function () { LH.showLeague(); };
   }
 
   function hitMinimap(p) {
@@ -183,6 +185,8 @@
         acc -= C.DAY_MS;
         LH.tick(s);
         LH.autopilot(s);
+        LH.checkEnd(s);
+        if (s.ended && s.ended !== 'continued') break;
       }
       if (guard > 0) {
         LH.refreshTop(s);
@@ -223,6 +227,9 @@
         nextId: s.nextId, res: s.res, pop: s.pop, tourists: s.tourists,
         morale: s.morale, health: s.health, tier: s.tier, log: s.log.slice(0, 40),
         deaths: s.deaths, flare: s.flare, auto: s.auto, sandbox: s.sandbox,
+        autoEverUsed: s.autoEverUsed, sandboxEverUsed: s.sandboxEverUsed,
+        peakPop: s.peakPop, totalExports: s.totalExports, totalIncome: s.totalIncome,
+        crisisDays: s.crisisDays, ended: s.ended,
         autoShaftX: s.autoShaftX, autoShaftBot: s.autoShaftBot
       }));
       LH.toast('Colony saved to this browser.', 'good');
@@ -252,11 +259,14 @@
     } catch (e) { return false; }
   };
 
-  LH.confirmNew = function () {
-    if (!window.confirm('Abandon this colony and start a new one? The saved game will be overwritten when you next save.')) return;
+  LH.confirmNew = function (skipConfirm) {
+    if (!skipConfirm &&
+        !window.confirm('Abandon this colony and start a new one? The saved game will be overwritten when you next save.')) return;
     LH.S = LH.newState();
     ui.sel = null; ui.tool = null; lastTier = 1; lastLogLen = 0;
     R.cam = { x: C.GRID_W * C.CELL_W / 2, y: 0, z: 0.8 };
+    var sbBtn = document.getElementById('btn-sandbox');
+    if (sbBtn) sbBtn.classList.remove('on');
     LH.buildPalette(LH.S); LH.refreshTop(LH.S); LH.refreshPanel(LH.S);
     LH.toast('New survey site. Good luck.', 'good');
   };

@@ -46,6 +46,7 @@ let drones, crawlers, parts, ships, colonies, player, cam, clock, running, pause
 let over = false, overWin = false;
 let diff = 0, muted = false, showBeacons = false;
 let frame = 0, navDirty = true, navTimer = 0;
+let swarmPeak = 0, autoUsed = false, lastRun = null;
 let logLines = [];
 
 /* --------------------------------------------------------------- elements */
@@ -95,32 +96,278 @@ function blocked(x, y, r) {
          solidPx(x - r, y + r) || solidPx(x + r, y + r);
 }
 
-/* ------------------------------------------------------------------ audio */
-let actx = null;
-function beep(freq, dur, type, gain) {
-  if (muted) return;
+/* ==========================================================================
+   AUDIO
+   One small synth engine, five swappable sound packs, and an adaptive score
+   that reads the same colony state the HUD does. Everything is generated at
+   runtime — there are no audio files anywhere in this project.
+   ========================================================================== */
+let actx = null, masterBus, sfxBus, musBus, noiseBuf;
+let musicOn = true, pack = 'industrial';
+
+function audioInit() {
+  if (actx) return actx;
   try {
-    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.type = type || 'square'; o.frequency.value = freq;
-    g.gain.setValueAtTime(gain || 0.05, actx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
-    o.connect(g); g.connect(actx.destination);
-    o.start(); o.stop(actx.currentTime + dur);
-  } catch (e) { /* audio is a nicety, never a failure */ }
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    masterBus = actx.createGain(); masterBus.gain.value = 0.9; masterBus.connect(actx.destination);
+    sfxBus = actx.createGain(); sfxBus.gain.value = 1.0; sfxBus.connect(masterBus);
+    musBus = actx.createGain(); musBus.gain.value = 0.0; musBus.connect(masterBus);
+    const n = actx.sampleRate * 1.5, b = actx.createBuffer(1, n, actx.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    noiseBuf = b;
+    musNext = actx.currentTime + 0.08;
+  } catch (e) { actx = null; }
+  return actx;
+}
+function audioResume() { if (actx && actx.state === 'suspended') actx.resume(); }
+
+/* ---- two primitives: a pitched voice and a filtered noise burst ---- */
+function tone(o) {
+  if (!actx) return;
+  const t0 = o.at != null ? o.at : actx.currentTime + (o.delay || 0);
+  const dur = o.dur, osc = actx.createOscillator(), g = actx.createGain();
+  osc.type = o.type || 'square';
+  osc.frequency.setValueAtTime(o.f, t0);
+  if (o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.f2), t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, o.gain), t0 + (o.atk || 0.006));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  let node = osc;
+  if (o.cut) {
+    const f = actx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = o.cut; f.Q.value = o.q || 1;
+    osc.connect(f); node = f;
+  }
+  node.connect(g); g.connect(o.dest || sfxBus);
+  osc.start(t0); osc.stop(t0 + dur + 0.03);
+}
+function noise(o) {
+  if (!actx) return;
+  const t0 = o.at != null ? o.at : actx.currentTime + (o.delay || 0);
+  const dur = o.dur;
+  const s = actx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+  s.playbackRate.value = 0.7 + Math.random() * 0.6;
+  const f = actx.createBiquadFilter();
+  f.type = o.filter || 'lowpass';
+  f.frequency.setValueAtTime(o.cut || 1400, t0);
+  if (o.cut2) f.frequency.exponentialRampToValueAtTime(Math.max(60, o.cut2), t0 + dur);
+  f.Q.value = o.q || 1;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(Math.max(0.0002, o.gain), t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  s.connect(f); f.connect(g); g.connect(o.dest || sfxBus);
+  s.start(t0); s.stop(t0 + dur + 0.03);
+}
+const seq = (notes, o) => notes.forEach((f, i) => tone(Object.assign({}, o, { f, delay: i * (o.gap || 0.14) })));
+
+/* ==========================================================================
+   SOUND PACKS
+   Each pack renders the same ten game events in its own voice, and declares
+   how the adaptive score should be instrumented.
+   ========================================================================== */
+const PACKS = {
+  industrial: {
+    label: 'INDUSTRIAL', blurb: 'Bore drills, servos and hull clunks.',
+    mus: { bass: 'sawtooth', lead: 'square', cut: 900, drums: 0.5, swing: 0 },
+    bore:    () => noise({ dur: .07, gain: .045, cut: 850, cut2: 320, q: 5 }),
+    crack:   () => { noise({ dur: .24, gain: .11, cut: 1900, cut2: 130, q: 2 });
+                     tone({ f: 155, f2: 58, dur: .2, gain: .05, type: 'square' }); },
+    deposit: () => { tone({ f: 430, dur: .07, gain: .06, type: 'triangle' });
+                     tone({ f: 645, dur: .1, gain: .045, type: 'triangle', delay: .06 }); },
+    print:   () => { tone({ f: 210, f2: 430, dur: .17, gain: .06, type: 'sawtooth', cut: 1600 });
+                     noise({ dur: .09, gain: .035, cut: 2600, delay: .15 }); },
+    beacon:  () => tone({ f: 870, f2: 1310, dur: .1, gain: .05, type: 'sine' }),
+    hit:     () => { noise({ dur: .09, gain: .08, cut: 2600, cut2: 620 });
+                     tone({ f: 112, f2: 70, dur: .09, gain: .045, type: 'square' }); },
+    die:     () => { noise({ dur: .5, gain: .11, cut: 1500, cut2: 90 });
+                     tone({ f: 125, f2: 42, dur: .45, gain: .06, type: 'sawtooth' }); },
+    launch:  () => { noise({ dur: 2.4, gain: .15, cut: 620, cut2: 190, q: .7 });
+                     tone({ f: 62, f2: 36, dur: 2.1, gain: .07, type: 'sawtooth' }); },
+    win:     () => seq([392, 523, 659, 784], { dur: .3, gain: .06, type: 'square', gap: .15 }),
+    lose:    () => seq([330, 262, 196, 131], { dur: .42, gain: .06, type: 'sawtooth', gap: .19 }),
+  },
+
+  laser: {
+    label: 'LASER', blurb: 'Coherent-beam mining. Everything goes pew.',
+    mus: { bass: 'square', lead: 'sawtooth', cut: 2200, drums: 0.3, swing: 0 },
+    bore:    () => tone({ f: 1500 + Math.random() * 500, f2: 700, dur: .05, gain: .028, type: 'sawtooth' }),
+    crack:   () => { tone({ f: 2400, f2: 180, dur: .22, gain: .07, type: 'sawtooth' });
+                     tone({ f: 1200, f2: 90, dur: .25, gain: .04, type: 'sine', delay: .02 }); },
+    deposit: () => { tone({ f: 600, f2: 1800, dur: .12, gain: .055, type: 'sine' });
+                     tone({ f: 1800, dur: .07, gain: .03, type: 'sine', delay: .1 }); },
+    print:   () => seq([660, 990, 1320], { dur: .09, gain: .05, type: 'square', gap: .06 }),
+    beacon:  () => tone({ f: 2000, f2: 3400, dur: .09, gain: .045, type: 'sine' }),
+    hit:     () => tone({ f: 1800, f2: 260, dur: .1, gain: .06, type: 'sawtooth' }),
+    die:     () => { tone({ f: 1400, f2: 60, dur: .5, gain: .07, type: 'sawtooth' });
+                     noise({ dur: .3, gain: .05, cut: 3000, cut2: 300, delay: .04 }); },
+    launch:  () => { tone({ f: 200, f2: 2600, dur: 1.9, gain: .07, type: 'sawtooth' });
+                     tone({ f: 100, f2: 1300, dur: 2.1, gain: .05, type: 'square' }); },
+    win:     () => seq([880, 1174, 1568, 2093], { dur: .26, gain: .055, type: 'sawtooth', gap: .13 }),
+    lose:    () => seq([1200, 800, 500, 260], { dur: .34, gain: .06, type: 'sawtooth', gap: .16 }),
+  },
+
+  demolition: {
+    label: 'DEMOLITION', blurb: 'Shaped charges. Deep booms and rubble.',
+    mus: { bass: 'sine', lead: 'triangle', cut: 700, drums: 1.0, swing: 0 },
+    bore:    () => noise({ dur: .08, gain: .05, cut: 500, cut2: 180, q: 2 }),
+    crack:   () => { noise({ dur: .55, gain: .17, cut: 1100, cut2: 60, q: 1 });
+                     tone({ f: 90, f2: 30, dur: .5, gain: .11, type: 'sine' }); },
+    deposit: () => { tone({ f: 160, f2: 240, dur: .16, gain: .07, type: 'triangle' });
+                     noise({ dur: .16, gain: .05, cut: 700, cut2: 200 }); },
+    print:   () => { noise({ dur: .28, gain: .08, cut: 1500, cut2: 300 });
+                     tone({ f: 70, f2: 130, dur: .26, gain: .08, type: 'sine' }); },
+    beacon:  () => { tone({ f: 300, f2: 520, dur: .14, gain: .055, type: 'triangle' });
+                     noise({ dur: .1, gain: .03, cut: 1800 }); },
+    hit:     () => { noise({ dur: .16, gain: .1, cut: 1400, cut2: 200 });
+                     tone({ f: 80, f2: 44, dur: .15, gain: .07, type: 'sine' }); },
+    die:     () => { noise({ dur: .85, gain: .17, cut: 1600, cut2: 50 });
+                     tone({ f: 70, f2: 26, dur: .8, gain: .11, type: 'sine' }); },
+    launch:  () => { noise({ dur: 3.0, gain: .2, cut: 420, cut2: 140, q: .6 });
+                     tone({ f: 48, f2: 28, dur: 2.6, gain: .12, type: 'sine' });
+                     noise({ dur: .6, gain: .12, cut: 2200, cut2: 200 }); },
+    win:     () => [0, .22, .44].forEach(d => { noise({ dur: .6, gain: .13, cut: 1200, cut2: 70, delay: d });
+                     tone({ f: 90, f2: 34, dur: .55, gain: .09, type: 'sine', delay: d }); }),
+    lose:    () => { noise({ dur: 1.6, gain: .18, cut: 900, cut2: 40 });
+                     tone({ f: 60, f2: 20, dur: 1.5, gain: .1, type: 'sine' }); },
+  },
+
+  drums: {
+    label: 'PERCUSSION', blurb: 'The whole operation played on a kit.',
+    mus: { bass: 'triangle', lead: 'square', cut: 1400, drums: 1.4, swing: 0.18 },
+    bore:    () => noise({ dur: .035, gain: .035, cut: 9000, filter: 'highpass' }),   // hat
+    crack:   () => { noise({ dur: .17, gain: .12, cut: 2200, filter: 'highpass' });    // snare
+                     tone({ f: 190, f2: 150, dur: .12, gain: .05, type: 'triangle' }); },
+    deposit: () => tone({ f: 220, f2: 120, dur: .22, gain: .09, type: 'sine' }),       // tom
+    print:   () => { tone({ f: 400, dur: .05, gain: .06, type: 'square' });            // rim
+                     tone({ f: 300, dur: .05, gain: .05, type: 'square', delay: .08 }); },
+    beacon:  () => noise({ dur: .5, gain: .05, cut: 7000, filter: 'highpass' }),       // ride
+    hit:     () => { tone({ f: 150, f2: 90, dur: .14, gain: .08, type: 'sine' });      // floor tom
+                     noise({ dur: .06, gain: .04, cut: 3000, filter: 'highpass' }); },
+    die:     () => { noise({ dur: 1.1, gain: .1, cut: 5000, filter: 'highpass' });     // crash
+                     tone({ f: 110, f2: 45, dur: .4, gain: .09, type: 'sine' }); },
+    launch:  () => { tone({ f: 120, f2: 34, dur: .6, gain: .14, type: 'sine' });       // big kick
+                     noise({ dur: 2.4, gain: .09, cut: 6000, filter: 'highpass' });
+                     [0, .18, .36, .54].forEach(d => tone({ f: 260 - d * 200, dur: .18, gain: .07, type: 'sine', delay: d })); },
+    win:     () => [0, .16, .32, .48].forEach((d, i) => { tone({ f: 130, f2: 40, dur: .2, gain: .11, type: 'sine', delay: d });
+                     if (i === 3) noise({ dur: 1.2, gain: .1, cut: 5000, filter: 'highpass', delay: d }); }),
+    lose:    () => [0, .2, .45, .8].forEach(d => { tone({ f: 100, f2: 36, dur: .3, gain: .1, type: 'sine', delay: d });
+                     noise({ dur: .3, gain: .06, cut: 2000, filter: 'highpass', delay: d }); }),
+  },
+
+  electro: {
+    label: 'ELECTRO', blurb: 'Chiptune blips over a full synth score.',
+    mus: { bass: 'sawtooth', lead: 'square', cut: 1800, drums: 1.0, swing: 0.12 },
+    bore:    () => tone({ f: 320 + Math.random() * 90, dur: .035, gain: .022, type: 'square' }),
+    crack:   () => seq([740, 1100], { dur: .09, gain: .055, type: 'square', gap: .05 }),
+    deposit: () => seq([523, 784, 1047], { dur: .07, gain: .05, type: 'square', gap: .05 }),
+    print:   () => seq([392, 523, 659], { dur: .08, gain: .05, type: 'triangle', gap: .05 }),
+    beacon:  () => tone({ f: 1319, f2: 1976, dur: .1, gain: .045, type: 'triangle' }),
+    hit:     () => tone({ f: 220, f2: 110, dur: .08, gain: .055, type: 'square' }),
+    die:     () => seq([440, 330, 220, 110], { dur: .12, gain: .06, type: 'square', gap: .08 }),
+    launch:  () => { seq([131, 196, 262, 392, 523], { dur: .16, gain: .06, type: 'sawtooth', gap: .12 });
+                     tone({ f: 65, dur: 2.2, gain: .06, type: 'sawtooth', cut: 800 }); },
+    win:     () => seq([523, 659, 784, 1047, 1319], { dur: .22, gain: .055, type: 'square', gap: .12 }),
+    lose:    () => seq([415, 349, 277, 208], { dur: .3, gain: .06, type: 'square', gap: .17 }),
+  },
+};
+const PACK_IDS = Object.keys(PACKS);
+
+/* ---- event dispatch: every call site keeps using sfx.<event>() ---- */
+function play(ev) {
+  if (muted) return;
+  if (!audioInit()) return;
+  const fn = (PACKS[pack] || PACKS.industrial)[ev];
+  if (fn) { try { fn(); } catch (e) { /* never let a sound break the sim */ } }
 }
 const sfx = {
-  bore:    () => beep(70 + Math.random() * 30, 0.05, 'sawtooth', 0.025),
-  crack:   () => beep(180, 0.16, 'square', 0.05),
-  deposit: () => beep(520, 0.09, 'sine', 0.06),
-  print:   () => { beep(330, 0.07, 'square', 0.05); setTimeout(() => beep(494, 0.1, 'square', 0.05), 70); },
-  beacon:  () => beep(760, 0.07, 'sine', 0.05),
-  hit:     () => beep(120, 0.07, 'sawtooth', 0.045),
-  die:     () => beep(90, 0.3, 'sawtooth', 0.07),
-  win:     () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.22, 'square', 0.06), i * 130)),
-  lose:    () => [400, 320, 240, 150].forEach((f, i) => setTimeout(() => beep(f, 0.3, 'sawtooth', 0.06), i * 160)),
-  launch:  () => { beep(70, 1.1, 'sawtooth', 0.05); setTimeout(() => beep(150, 0.9, 'square', 0.03), 120); },
+  bore:    () => play('bore'),    crack: () => play('crack'),
+  deposit: () => play('deposit'), print: () => play('print'),
+  beacon:  () => play('beacon'),  hit:   () => play('hit'),
+  die:     () => play('die'),     launch: () => play('launch'),
+  win:     () => play('win'),     lose:  () => play('lose'),
 };
+
+/* ==========================================================================
+   ADAPTIVE SCORE
+   A 16th-note sequencer on wall-clock time (not sim time, so it does not
+   chipmunk at 8x). What it plays is driven by the colony: layers enter as the
+   swarm grows, it goes to a minor sixth and drops an octave at lunar night,
+   and a raid on the fabricator pushes it to full intensity.
+   ========================================================================== */
+const PENT = [0, 3, 5, 7, 10, 12, 15, 19];       // minor pentatonic, two octaves
+let musNext = 0, musStep = 0, musI = 0;
+
+function musIntensity() {
+  if (!running || !colonies || !drones) return 0;
+  const c = colonies[PLAYER];
+  const swarm = drones.reduce((n, d) => n + (d.alive && d.col === PLAYER ? 1 : 0), 0);
+  let i = Math.min(0.75, swarm / 30);
+  if (typeof auto !== 'undefined' && auto.sieging) i = Math.max(i, 0.85);
+  if (c.underAttack > 0) i = 1;
+  if (over) i = 0;
+  return i;
+}
+
+function musicScheduler() {
+  if (!actx) return;
+  const wantMusic = musicOn && !muted && running && !paused && !over;
+  musBus.gain.setTargetAtTime(wantMusic ? 0.5 : 0.0, actx.currentTime, 0.35);
+  if (!wantMusic) { musNext = Math.max(musNext, actx.currentTime + 0.05); return; }
+
+  musI += (musIntensity() - musI) * 0.08;
+  const P = (PACKS[pack] || PACKS.industrial).mus;
+  const bpm = 82 + musI * 46;
+  const st = 60 / bpm / 4;                              // one 16th
+
+  while (musNext < actx.currentTime + 0.16) {
+    scheduleStep(musStep, musNext, P, st);
+    const swing = (musStep % 2) ? 0 : (P.swing || 0) * st;
+    musNext += st + swing - ((musStep % 2) ? (P.swing || 0) * st : 0);
+    musStep++;
+  }
+}
+
+function scheduleStep(s, at, P, st) {
+  const night = clock && !clock.day;
+  const root = night ? 98 : 110;                        // G2 at night, A2 by day
+  const bar = s % 16, I = musI;
+  const nf = k => root * Math.pow(2, PENT[((k % PENT.length) + PENT.length) % PENT.length] / 12);
+
+  // bass pulse — always present, this is the heartbeat of the plant
+  if (bar % 4 === 0) {
+    const step4 = (s / 4 | 0) % 4;
+    tone({ f: root * (step4 === 2 ? 1.5 : step4 === 3 ? 1.335 : 1), dur: st * 3.4,
+           gain: .085, type: P.bass, cut: P.cut * 0.5, dest: musBus, at });
+  }
+
+  // kick + hats scale in with the operation
+  if (P.drums > 0.2 && I > 0.18 && bar % 8 === 0)
+    tone({ f: 105, f2: 38, dur: .22, gain: .1 * P.drums, type: 'sine', dest: musBus, at });
+  if (P.drums > 0.2 && I > 0.5 && bar % 4 === 2)
+    noise({ dur: .035, gain: .022 * P.drums, cut: 8000, filter: 'highpass', dest: musBus, at });
+  if (P.drums > 0.8 && I > 0.7 && bar === 8)
+    noise({ dur: .16, gain: .07 * P.drums, cut: 2400, filter: 'highpass', dest: musBus, at });
+
+  // arpeggio — enters once the swarm is properly working
+  if (I > 0.32 && bar % 2 === 0) {
+    const k = [0, 2, 4, 3, 1, 4, 2, 5][(s / 2 | 0) % 8];
+    tone({ f: nf(k) * 2, dur: st * 1.7, gain: .045 + I * 0.02, type: P.lead,
+           cut: P.cut, dest: musBus, at });
+  }
+
+  // night pad — a held fifth, only in the dark
+  if (night && bar === 0)
+    tone({ f: root * 1.5, dur: st * 15, gain: .03, type: 'triangle', cut: 700, dest: musBus, at });
+
+  // siege / raid lead — the top layer, only when it matters
+  if (I > 0.82 && bar % 8 === 4) {
+    const k = [4, 5, 6, 5][(s / 8 | 0) % 4];
+    tone({ f: nf(k) * 2, f2: nf(k) * 3, dur: st * 2.6, gain: .05, type: P.lead,
+           cut: P.cut * 1.4, dest: musBus, at });
+  }
+}
+setInterval(musicScheduler, 25);
+
 
 /* -------------------------------------------------------------- world gen */
 function generate() {
@@ -384,6 +631,9 @@ addEventListener('keydown', e => {
   // any steering input takes the stick back from the autopilot
   if (auto.on && (k.length === 1 && 'wasd'.includes(k) || k.startsWith('arrow'))) setAuto(false);
   if (k === 'f') setAuto(!auto.on);
+  if (k === 'n') setMuted(!muted);
+  if (k === 'v') setMusic(!musicOn);
+  if (k === 'b') setPack(PACK_IDS[(PACK_IDS.indexOf(pack) + 1) % PACK_IDS.length], true);
   if (k === '[') setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(speed) - 1)]);
   if (k === ']') setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(speed) + 1)]);
   if (k === 'p') togglePause();
@@ -444,6 +694,7 @@ function startGame() {
   $('banner').classList.remove('on');
   $('banner-title').style.color = '';
   auto.mode = 'mine'; auto.beaconCd = 0; auto.orderCd = 0; auto.sieging = false;
+  swarmPeak = 0; autoUsed = auto.on;
 
   generate();
   initFields();
@@ -487,6 +738,8 @@ function togglePause() {
 function endGame(win) {
   over = true; overWin = win; paused = true;
   const c = colonies[PLAYER];
+  const rec = recordResult(win);
+  lastRun = rec;
   $('banner-title').textContent = win ? 'SEAM SECURED' : 'COLONY LOST';
   $('banner-title').style.color = win ? 'var(--amber)' : 'var(--red)';
   $('banner-body').innerHTML = win
@@ -494,7 +747,13 @@ function endGame(win) {
       '</b> &middot; shipped to Earth: <b>' + Math.round(c.shipped) + ' t</b> &middot; plant tier: <b>' +
       c.tier + '</b><br>Drones printed: <b>' + c.printed + '</b> &middot; time: <b>' + fmt(clock.elapsed) + '</b>'
     : 'The fabricator is slag. Without it there are no more drones.<br>Ore mined: <b>' +
-      Math.round(c.mined) + '</b> &middot; survived: <b>' + fmt(clock.elapsed) + '</b>';
+      Math.round(c.mined) + '</b> &middot; shipped: <b>' + Math.round(c.shipped) +
+      ' t</b> &middot; survived: <b>' + fmt(clock.elapsed) + '</b>';
+  $('banner-body').innerHTML +=
+    '<br><span class="scoreline">SCORE <b>' + rec.score.toLocaleString('en-US') + '</b>' +
+    ' &middot; rank <b>#' + rec.rank + '</b> of ' + rec.total +
+    (rec.auto ? ' &middot; flown by <b>AGENT</b>' : '') +
+    (rec.best && rec.total > 1 ? ' &middot; <b class="pb">NEW BEST</b>' : '') + '</span>';
   $('btn-banner').textContent = 'PLAY AGAIN';
   $('banner').classList.add('on');
   win ? sfx.win() : sfx.lose();
@@ -507,6 +766,89 @@ function endGame(win) {
 }
 
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+
+/* ==========================================================================
+   LEAGUE TABLE
+   Every finished contract — flown by hand or by the agent — is scored and
+   filed. The record is kept in localStorage and is also read back by the
+   Mission Control dashboard.
+   ========================================================================== */
+const DIFF_MUL = [1.0, 1.35, 1.8];
+const LEAGUE_KEY = 'bmg_league';
+
+function scoreRun(r) {
+  // Tonnage shipped to Earth is the contract; everything else is supporting work.
+  const base  = r.shipped * 10 + r.mined * 2 + r.tier * 60 + r.printed * 4;
+  const swift = r.win ? Math.max(0, 1500 - r.time) * 2 : 0;
+  return Math.round((base + swift) * DIFF_MUL[r.diff] * (r.win ? 1.5 : 0.7));
+}
+function loadLeague() {
+  try { const a = JSON.parse(localStorage.getItem(LEAGUE_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function saveLeague(a) {
+  try { localStorage.setItem(LEAGUE_KEY, JSON.stringify(a.slice(0, 60))); } catch (e) {}
+}
+
+function recordResult(win) {
+  const c = colonies[PLAYER];
+  const r = {
+    ts: Date.now(), diff: diff, win: win,
+    time: Math.round(clock.elapsed),
+    mined: Math.round(c.mined), shipped: Math.round(c.shipped),
+    tier: c.tier, printed: c.printed, lost: c.lost,
+    peak: swarmPeak, hub: Math.round(Math.max(0, c.integrity)),
+    auto: autoUsed,
+  };
+  r.score = scoreRun(r);
+  const all = loadLeague();
+  all.push(r);
+  all.sort((a, b) => b.score - a.score);
+  saveLeague(all);
+  r.rank = all.findIndex(x => x.ts === r.ts) + 1;
+  r.total = all.length;
+  r.best = all.length > 0 && all[0].ts === r.ts;
+  return r;
+}
+
+function renderLeague(highlightTs) {
+  const all = loadLeague();
+  const el = $('league-body');
+  if (!all.length) {
+    el.innerHTML = '<p class="dim">No contracts on record yet. Finish a run and it lands here.</p>';
+    return;
+  }
+  const wins = all.filter(r => r.win).length;
+  const rows = all.slice(0, 20).map((r, i) => {
+    const hl = r.ts === highlightTs ? ' class="me"' : '';
+    const d = new Date(r.ts);
+    const date = String(d.getDate()).padStart(2, '0') + '/' +
+                 String(d.getMonth() + 1).padStart(2, '0');
+    return '<tr' + hl + '>' +
+      '<td class="rank">' + (i + 1) + '</td>' +
+      '<td class="score">' + r.score.toLocaleString('en-US') + '</td>' +
+      '<td class="' + (r.win ? 'w' : 'l') + '">' + (r.win ? 'SECURED' : 'LOST') + '</td>' +
+      '<td>' + (DIFF[r.diff] ? DIFF[r.diff].name : '—') + '</td>' +
+      '<td>' + (r.auto ? '<span class="ag">AGENT</span>' : 'PILOT') + '</td>' +
+      '<td>' + fmt(r.time) + '</td>' +
+      '<td>' + r.shipped + ' t</td>' +
+      '<td>' + r.mined + '</td>' +
+      '<td>' + r.tier + '</td>' +
+      '<td>' + r.peak + '</td>' +
+      '<td class="dt">' + date + '</td></tr>';
+  }).join('');
+  el.innerHTML =
+    '<p class="dim">' + all.length + ' contract' + (all.length === 1 ? '' : 's') + ' on record · ' +
+      wins + ' secured · best score <b style="color:var(--amber)">' +
+      all[0].score.toLocaleString('en-US') + '</b></p>' +
+    '<div class="tablewrap"><table class="league">' +
+    '<thead><tr><th>#</th><th>SCORE</th><th>RESULT</th><th>CONTRACT</th><th>PILOT</th>' +
+    '<th>TIME</th><th>SHIPPED</th><th>MINED</th><th>TIER</th><th>PEAK</th><th>DATE</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>' +
+    '<p class="footnote">Score = shipped&times;10 + mined&times;2 + tier&times;60 + printed&times;4, ' +
+    'plus a speed bonus for a win, all scaled by contract difficulty. Runs flown by the ' +
+    'autoplay agent are filed as AGENT.</p>';
+}
 
 function quitToTitle() { running = false; $('banner').classList.remove('on'); show('screen-title'); }
 
@@ -543,6 +885,9 @@ function update(dt) {
   if (frame % 30 === 0) {
     drones = drones.filter(d => d.alive || d.isPlayer);
     crawlers = crawlers.filter(c => c.alive);
+    let n = 0;
+    for (const d of drones) if (d.alive && d.col === PLAYER) n++;
+    if (n > swarmPeak) swarmPeak = n;
   }
 
   for (let i = parts.length - 1; i >= 0; i--) {
@@ -629,7 +974,9 @@ const auto = { on: false, mode: 'mine', beaconCd: 0, orderCd: 0, sieging: false,
 
 function setAuto(on) {
   auto.on = on;
+  if (on) autoUsed = true;
   auto.mode = 'mine'; auto.beaconCd = 0; auto.orderCd = 0; auto.sieging = false;
+  swarmPeak = 0; autoUsed = auto.on;
   $('btn-auto').textContent = 'AUTOPLAY: ' + (on ? 'ON' : 'OFF');
   $('btn-auto').classList.toggle('on', on);
   if (!running) return;
@@ -1585,15 +1932,72 @@ function show(id) {
 $('btn-start').onclick = () => { if (actx && actx.state === 'suspended') actx.resume(); startGame(); };
 $('btn-help-title').onclick = () => show('screen-help');
 $('btn-help-back').onclick = () => show('screen-title');
+
+/* ---------------------------------------------------------- league table */
+$('btn-league-title').onclick = () => { renderLeague(); show('screen-league'); };
+$('btn-league-back').onclick = () => show('screen-title');
+$('btn-league-open').onclick = () => {
+  running = false;
+  $('banner').classList.remove('on');
+  renderLeague(lastRun ? lastRun.ts : 0);
+  show('screen-league');
+};
+$('btn-league-clear').onclick = () => {
+  if (!confirm('Clear the entire contract record? This cannot be undone.')) return;
+  try { localStorage.removeItem(LEAGUE_KEY); } catch (e) {}
+  lastRun = null;
+  renderLeague();
+};
 $('btn-quit').onclick = quitToTitle;
 $('btn-banner').onclick = () => { if (over) startGame(); else togglePause(); };
 $('btn-auto').onclick = () => setAuto(!auto.on);
 $('speed-dial').onchange = e => setSpeed(+e.target.value);
-$('btn-mute').onclick = () => {
-  muted = !muted;
+
+/* ------------------------------------------------------------ audio controls */
+function save(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+function syncAudioUI() {
   $('btn-mute').textContent = 'SOUND: ' + (muted ? 'OFF' : 'ON');
-  try { localStorage.setItem('bmg_mute', muted ? '1' : '0'); } catch (e) {}
-};
+  $('btn-music').textContent = 'MUSIC: ' + (musicOn ? 'ON' : 'OFF');
+  const mh = $('btn-mute-hud'), vh = $('btn-music-hud');
+  mh.textContent = muted ? 'SFX OFF' : 'SFX';
+  mh.classList.toggle('on', !muted);
+  vh.classList.toggle('on', musicOn && !muted);
+  vh.title = 'Adaptive score ' + (musicOn ? 'on' : 'off') + ' (V)';
+  $('pack-dial').value = pack;
+  document.querySelectorAll('#pack-opts .opt')
+    .forEach(o => o.classList.toggle('sel', o.dataset.pack === pack));
+}
+
+function setMuted(v) {
+  muted = v; save('bmg_mute', v ? '1' : '0'); syncAudioUI();
+  if (!v) { audioInit(); audioResume(); }
+  if (running) log(v ? 'Audio <b>muted</b>.' : 'Audio <b>on</b> — ' + PACKS[pack].label + ' pack.');
+}
+function setMusic(v) {
+  musicOn = v; save('bmg_music', v ? '1' : '0'); syncAudioUI();
+  if (v) { audioInit(); audioResume(); }
+  if (running) log(v ? 'Adaptive score <b>on</b>.' : 'Adaptive score <b>off</b>.');
+}
+function setPack(id, demo) {
+  if (!PACKS[id]) return;
+  pack = id; save('bmg_pack', id); syncAudioUI();
+  if (!muted) { audioInit(); audioResume(); if (demo) play('deposit'); }
+  if (running) log('Audio pack: <b>' + PACKS[id].label + '</b> — ' + PACKS[id].blurb);
+}
+
+$('btn-mute').onclick = () => setMuted(!muted);
+$('btn-music').onclick = () => setMusic(!musicOn);
+$('btn-mute-hud').onclick = () => setMuted(!muted);
+$('btn-music-hud').onclick = () => setMusic(!musicOn);
+$('pack-dial').onchange = e => setPack(e.target.value, true);
+document.querySelectorAll('#pack-opts .opt').forEach(o => {
+  o.onclick = () => setPack(o.dataset.pack, true);
+});
+
+// Browsers only allow audio after a gesture — wake the context on the first one.
+['pointerdown', 'keydown'].forEach(ev =>
+  addEventListener(ev, () => { if (!muted) { audioInit(); audioResume(); } }, { once: true }));
 
 document.querySelectorAll('#diff-opts .opt').forEach(o => {
   o.onclick = () => {
@@ -1608,12 +2012,15 @@ try {
   const sp = +localStorage.getItem('bmg_speed');
   if (SPEEDS.includes(sp)) setSpeed(sp);
   muted = localStorage.getItem('bmg_mute') === '1';
-  $('btn-mute').textContent = 'SOUND: ' + (muted ? 'OFF' : 'ON');
+  musicOn = localStorage.getItem('bmg_music') !== '0';
+  const sp2 = localStorage.getItem('bmg_pack');
+  if (sp2 && PACKS[sp2]) pack = sp2;
   const d = +localStorage.getItem('bmg_diff');
   if (d >= 0 && d <= 2) {
     diff = d;
     document.querySelectorAll('#diff-opts .opt').forEach(x => x.classList.toggle('sel', +x.dataset.diff === d));
   }
 } catch (e) {}
+syncAudioUI();
 
 requestAnimationFrame(loop);

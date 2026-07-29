@@ -49,6 +49,10 @@ h1{
   transition:.15s;
 }
 .cta:hover{box-shadow:0 0 26px rgba(255,200,87,.2); transform:translateY(-1px)}
+.cta.alt{margin-left:10px; color:var(--accent2); border-color:rgba(84,201,186,.38);
+  background:linear-gradient(180deg,#0d2320,#081714)}
+.cta.alt:hover{box-shadow:0 0 26px rgba(84,201,186,.18)}
+@media (max-width:520px){.cta.alt{margin:10px 0 0; display:block; text-align:center}}
 
 /* ---------------- sections ---------------- */
 main{padding:52px 0 20px}

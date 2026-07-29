@@ -399,6 +399,7 @@
   LH.toggleAuto = function () {
     var s = LH.S;
     s.auto = !s.auto;
+    if (s.auto) s.autoEverUsed = true;
     var b = document.getElementById('btn-auto');
     if (b) b.classList.toggle('on', !!s.auto);
     LH.toast(s.auto ? 'Autopilot engaged — the colony will manage itself.' :

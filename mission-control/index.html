@@ -229,6 +229,9 @@
     </div>
   </article>
 
+  <h2 class="sec">Contract record</h2>
+  <div id="record"></div>
+
   <h2 class="sec">Downlink log</h2>
   <div class="log" id="log"></div>
 
@@ -272,21 +275,85 @@ addEventListener('load', () => {
     });
   }, 180);
 
-  document.querySelectorAll('.tile .v').forEach(el => {
+  // only the hand-authored summary tiles animate; the contract-record tiles
+  // are rendered from real data and must not be overwritten
+  document.querySelectorAll('.tile .v[data-count]').forEach(el => {
     const target = parseFloat(el.dataset.count), dec = +(el.dataset.dec || 0);
     const suffix = el.querySelector('small');
     const tail = suffix ? suffix.outerHTML : '';
     const t0 = performance.now(), dur = 1100;
     const fmt = v => v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    let settled = false;
+    const finish = () => { if (!settled) { settled = true; el.innerHTML = fmt(target) + tail; } };
     (function step(t) {
+      if (settled) return;
       const p = Math.min(1, (t - t0) / dur);
       const eased = 1 - Math.pow(1 - p, 3);
       el.innerHTML = fmt(target * eased) + tail;
-      if (p < 1) requestAnimationFrame(step);
-      else el.innerHTML = fmt(target) + tail;
+      if (p < 1) requestAnimationFrame(step); else finish();
     })(t0);
+    // rAF is throttled in a background tab, so guarantee the real figure lands
+    setTimeout(finish, dur + 400);
   });
 });
+
+/* ---- contract record, read back from the site's own flight log ----
+   BORE-1 files every finished contract into localStorage under the same
+   origin, so Mission Control can report the real standings rather than
+   invented ones. ---- */
+const DIFF_NAMES = ['SURVEY RUN', 'CLAIM DISPUTE', 'HOSTILE TAKEOVER'];
+const mmss = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+
+(function renderRecord() {
+  let rows = [];
+  try { const a = JSON.parse(localStorage.getItem('bmg_league') || '[]'); if (Array.isArray(a)) rows = a; }
+  catch (e) { rows = []; }
+  const el = document.getElementById('record');
+
+  if (!rows.length) {
+    el.innerHTML = '<div class="norec">No contracts filed yet. Run a shift at ' +
+      '<a href="../games/boring-mining/">BORE-1</a> and the results are logged here automatically.</div>';
+    return;
+  }
+  rows.sort((a, b) => b.score - a.score);
+  const wins = rows.filter(r => r.win).length;
+  const agent = rows.filter(r => r.auto).length;
+  const shipped = rows.reduce((n, r) => n + (r.shipped || 0), 0);
+  const mined = rows.reduce((n, r) => n + (r.mined || 0), 0);
+
+  const body = rows.slice(0, 12).map((r, i) => {
+    const d = new Date(r.ts);
+    return '<tr>' +
+      '<td class="rk">' + (i + 1) + '</td>' +
+      '<td class="sc">' + (r.score || 0).toLocaleString('en-US') + '</td>' +
+      '<td class="' + (r.win ? 'w' : 'l') + '">' + (r.win ? 'SECURED' : 'LOST') + '</td>' +
+      '<td>' + (DIFF_NAMES[r.diff] || '—') + '</td>' +
+      '<td>' + (r.auto ? '<span class="ag">AGENT</span>' : 'PILOT') + '</td>' +
+      '<td>' + mmss(r.time || 0) + '</td>' +
+      '<td>' + (r.shipped || 0) + ' t</td>' +
+      '<td>' + (r.mined || 0) + '</td>' +
+      '<td>' + (r.tier || 0) + '</td>' +
+      '<td class="dt">' + d.toISOString().slice(0, 10) + '</td></tr>';
+  }).join('');
+
+  el.innerHTML =
+    '<div class="tiles" style="margin-bottom:12px">' +
+      '<div class="tile g"><div class="k">Contracts secured</div><div class="v">' + wins +
+        '<small> / ' + rows.length + '</small></div><div class="n">filed to the programme record</div></div>' +
+      '<div class="tile"><div class="k">Best score</div><div class="v">' +
+        rows[0].score.toLocaleString('en-US') + '</div><div class="n">' +
+        (DIFF_NAMES[rows[0].diff] || '') + ' · ' + mmss(rows[0].time || 0) + '</div></div>' +
+      '<div class="tile c"><div class="k">Total shipped</div><div class="v">' +
+        shipped.toLocaleString('en-US') + '<small> t</small></div><div class="n">' +
+        mined.toLocaleString('en-US') + ' t mined across all shifts</div></div>' +
+      '<div class="tile"><div class="k">Flown by agent</div><div class="v">' + agent +
+        '<small> / ' + rows.length + '</small></div><div class="n">uncrewed contracts</div></div>' +
+    '</div>' +
+    '<div class="recwrap"><table class="rec"><thead><tr>' +
+    '<th>#</th><th>SCORE</th><th>RESULT</th><th>CONTRACT</th><th>PILOT</th>' +
+    '<th>TIME</th><th>SHIPPED</th><th>MINED</th><th>TIER</th><th>FILED</th>' +
+    '</tr></thead><tbody>' + body + '</tbody></table></div>';
+})();
 
 /* ---- downlink log: the team reporting home ---- */
 const LOG = [

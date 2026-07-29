@@ -224,7 +224,11 @@
           '<div class="sig">— Programme Board, Lunar Settlement Initiative, Earth</div>' +
         '</div>' +
 
-        '<button class="mc-close" onclick="LH.hideReport()">CLOSE UPLINK ✕</button>' +
+        '<div class="mc-endrow">' +
+          '<button class="mc-close" onclick="LH.hideReport()">CLOSE UPLINK ✕</button>' +
+          '<button class="mc-close" onclick="LH.showLeague()">🏆 LEAGUE TABLE</button>' +
+          '<button class="mc-close danger" onclick="LH.retireColony()">FILE FINAL REPORT &amp; SCORE RUN</button>' +
+        '</div>' +
       '</div>';
 
     var h = s.history;

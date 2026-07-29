@@ -30,10 +30,21 @@
         <div class="opt" data-diff="2"><b>HOSTILE TAKEOVER</b><span>Helios mines faster and raids early. Good luck.</span></div>
       </div>
 
+      <h3>AUDIO PACK</h3>
+      <div class="opts" id="pack-opts">
+        <div class="opt" data-pack="industrial"><b>INDUSTRIAL</b><span>Bore drills, servos and hull clunks.</span></div>
+        <div class="opt" data-pack="laser"><b>LASER</b><span>Coherent-beam mining. Everything goes pew.</span></div>
+        <div class="opt" data-pack="demolition"><b>DEMOLITION</b><span>Shaped charges. Deep booms and rubble.</span></div>
+        <div class="opt" data-pack="drums"><b>PERCUSSION</b><span>The whole operation played on a kit.</span></div>
+        <div class="opt" data-pack="electro"><b>ELECTRO</b><span>Chiptune blips over a full synth score.</span></div>
+      </div>
+
       <div class="row">
         <button class="btn big" id="btn-start">DEPLOY COLONY ►</button>
         <button class="btn" id="btn-help-title">HOW TO PLAY</button>
+        <button class="btn" id="btn-league-title">LEAGUE TABLE</button>
         <button class="btn" id="btn-mute">SOUND: ON</button>
+        <button class="btn" id="btn-music">MUSIC: ON</button>
       </div>
 
       <p class="footnote">An original fan-made game for the <a href="../../">Lunar Arcade</a>.
@@ -59,6 +70,7 @@
             <li><kbd>M</kbd> beacon overlay &nbsp; <kbd>P</kbd> pause &nbsp; <kbd>ESC</kbd> quit</li>
             <li><kbd>F</kbd> — <b>autoplay</b>: hand DRONE-01 to the colony AI</li>
             <li><kbd>[</kbd> <kbd>]</kbd> — simulation speed, 0.25&times; to 8&times;</li>
+            <li><kbd>N</kbd> mute &nbsp; <kbd>B</kbd> cycle audio pack &nbsp; <kbd>V</kbd> score on/off</li>
           </ul>
           <p class="dim">Cargo is picked up and unloaded automatically — bore a seam until
           it breaks, then fly home through your own tunnels.</p>
@@ -94,6 +106,21 @@
         </div>
 
         <div>
+          <h3>AUDIO</h3>
+          <ul>
+            <li>Five sound packs, all synthesised at runtime — no audio files anywhere:
+                <b>Industrial</b> drills and servos, <b>Laser</b> beam mining, <b>Demolition</b>
+                shaped charges, <b>Percussion</b> (the whole operation played on a kit), and
+                <b>Electro</b> chiptune.</li>
+            <li>An <b>adaptive score</b> reads the colony: layers enter as the swarm grows, it drops
+                an octave into a minor key through the lunar night, and a raid on your fabricator
+                pushes it to full intensity.</li>
+            <li>Everything is switchable mid-run from the status bar, or with
+                <kbd>N</kbd> / <kbd>B</kbd> / <kbd>V</kbd>.</li>
+          </ul>
+        </div>
+
+        <div>
           <h3>THE OPPOSITION</h3>
           <ul>
             <li><span class="swatch" style="background:var(--red)"></span><b>Helios drones</b> mine the same
@@ -112,6 +139,19 @@
     </div>
   </section>
 
+  <!-- ============================ LEAGUE ============================ -->
+  <section id="screen-league" class="screen">
+    <div class="panel">
+      <h2>CONTRACT RECORD · MARE INGENII</h2>
+      <h1 style="font-size:30px">LEAGUE TABLE</h1>
+      <div id="league-body"></div>
+      <div class="row">
+        <button class="btn big" id="btn-league-back">◄ BACK</button>
+        <button class="btn" id="btn-league-clear">CLEAR RECORD</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ============================ GAME ============================ -->
   <section id="screen-game" class="screen">
     <div class="hud">
@@ -123,6 +163,15 @@
       <div class="stat"><span class="k">CARGO</span><span class="v" id="hud-cargo">0/4</span></div>
       <div class="stat"><span class="k">HULL</span><div class="bar hp"><i id="hud-hp"></i></div></div>
       <div class="spacer"></div>
+      <button class="minibtn" id="btn-mute-hud" title="Mute all audio (N)">SFX</button>
+      <button class="minibtn" id="btn-music-hud" title="Adaptive score on/off (V)">&#9834;</button>
+      <select id="pack-dial" class="dial" aria-label="Audio pack" title="Audio pack (B)">
+        <option value="industrial">INDUSTRIAL</option>
+        <option value="laser">LASER</option>
+        <option value="demolition">DEMOLITION</option>
+        <option value="drums">PERCUSSION</option>
+        <option value="electro">ELECTRO</option>
+      </select>
       <button class="minibtn" id="btn-auto" title="Let the colony AI pilot DRONE-01 (F)">AUTOPLAY: OFF</button>
       <div class="stat"><span class="k">SPEED</span>
         <select id="speed-dial" class="dial" aria-label="Simulation speed">
@@ -148,6 +197,7 @@
         <p id="banner-body" class="dim"></p>
         <div class="row" style="justify-content:center">
           <button class="btn big" id="btn-banner">RESUME</button>
+          <button class="btn" id="btn-league-open">LEAGUE TABLE</button>
           <button class="btn" id="btn-quit">ABANDON CONTRACT</button>
         </div>
       </div></div>
@@ -163,6 +213,9 @@
       <span><kbd>M</kbd> beacons</span>
       <span><kbd>P</kbd> pause</span>
       <span><kbd>F</kbd> autoplay</span>
+      <span><kbd>N</kbd> mute</span>
+      <span><kbd>B</kbd> audio pack</span>
+      <span><kbd>V</kbd> music</span>
       <span><kbd>[</kbd> <kbd>]</kbd> speed</span>
     </div>
   </section>

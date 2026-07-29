@@ -29,7 +29,12 @@
       flare: 0,          // days until a solar particle event lands (0 = none)
       history: [],
       deaths: 0,
-      ticks: 0
+      ticks: 0,
+      peakPop: 0,
+      totalExports: 0,
+      totalIncome: 0,
+      crisisDays: 0,
+      ended: null
     };
   };
 

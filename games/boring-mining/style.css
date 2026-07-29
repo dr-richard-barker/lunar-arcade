@@ -172,3 +172,27 @@ select.dial:hover{border-color:var(--amber-dim)}
   #mini{width:140px; height:83px}
   .hud{font-size:11px; gap:9px}
 }
+
+/* ---------- league table ---------- */
+.tablewrap{overflow-x:auto; margin:14px 0 6px; border:1px solid var(--line); border-radius:8px}
+table.league{border-collapse:collapse; width:100%; font-size:11.5px; min-width:720px}
+table.league th{
+  text-align:left; padding:10px 12px; font-size:10px; letter-spacing:.16em;
+  color:var(--muted); font-weight:700; background:var(--panel2);
+  border-bottom:1px solid var(--line); white-space:nowrap;
+}
+table.league td{padding:9px 12px; border-bottom:1px solid #131c29; white-space:nowrap; color:#b9c6d8}
+table.league tbody tr:last-child td{border-bottom:0}
+table.league tbody tr:hover{background:rgba(255,255,255,.02)}
+table.league td.rank{color:var(--muted); font-weight:700}
+table.league td.score{color:var(--amber); font-weight:800; font-size:12.5px}
+table.league td.w{color:var(--ok); font-weight:700}
+table.league td.l{color:var(--red); font-weight:700}
+table.league td.dt{color:var(--muted)}
+table.league .ag{color:var(--ice); font-weight:700}
+table.league tr.me td{background:rgba(255,200,87,.09)}
+table.league tr.me td.rank{box-shadow:inset 3px 0 0 var(--amber)}
+
+.scoreline{display:inline-block; margin-top:10px; font-size:12px; letter-spacing:.08em; color:var(--muted)}
+.scoreline b{color:var(--amber)}
+.scoreline .pb{color:var(--ok)}
