@@ -40,6 +40,16 @@ formula inverted: the surface is the most dangerous floor in the building.
   report with growth sparklines, a board assessment grade, and the full colony
   census.
 - **Sandbox mode** (`⚒ SANDBOX` / `S`): all modules free, all tiers unlocked.
+- **League table** (`🏆 LEAGUE` / `L`): every finished run is scored and filed
+  permanently. A run ends when the charter reaches Lunar Capital, when the
+  colony is abandoned (population zero for twelve days) or the programme is
+  cancelled (deep bankruptcy) — or when you file a final report by choice from
+  the Mission Control screen. The score is fully itemised: peak and final
+  population, charter tier, morale, treasury, lifetime exports, excavation
+  depth, tower height, colony scale and days survived, minus fatalities,
+  life-support failures and stranded modules, all times an outcome multiplier
+  (×1.5 for Lunar Capital, ×0.4 for a collapse). Runs are badged MANUAL, AUTO
+  or SANDBOX; sandbox runs are filed unranked.
 
 Saves live in the browser's localStorage (autosave every 90 seconds).
 
@@ -47,7 +57,8 @@ Code layout: `js/config.js` (all tuning constants and the module catalogue),
 `js/grid.js` (world state, placement rules, Dijkstra transit solver),
 `js/sim.js` (the daily tick), `js/render.js` (procedural canvas renderer with
 per-module animated interiors), `js/autopilot.js` (the colony director),
-`js/report.js` (Mission Control dashboard), `js/ui.js` (DOM chrome),
+`js/report.js` (Mission Control dashboard), `js/league.js` (end-of-run scoring
+and the league table), `js/ui.js` (DOM chrome),
 `js/main.js` (input + main loop).
 
 ### The Boring Mining Game (`games/boring-mining/`) — playable
