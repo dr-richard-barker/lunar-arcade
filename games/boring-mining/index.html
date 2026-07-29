@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Boring Mining Game — Lunar Arcade</title>
+<meta name="description" content="A lunar colony sim: bore tunnels, lay marker beacons, print drones and out-mine a rival extraction colony. Original browser game in the classic colony-sim tradition.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============================ TITLE ============================ -->
+  <section id="screen-title" class="screen active">
+    <div class="panel">
+      <h2>LUNAR ARCADE PRESENTS</h2>
+      <h1>THE BORING MINING GAME</h1>
+      <p class="tagline">Mare Ingenii, 2091. You are <b>DRONE-01</b> of colony <b>BORE-1</b> —
+      one unit among many, and the only one with a pilot. Bore the regolith, haul ore and ice
+      home, lay beacons the rest of the swarm will follow, and print more of yourself.
+      Somewhere across the mare, <span style="color:var(--red)">HELIOS EXTRACTION</span> is doing
+      exactly the same thing, and there is only one seam worth having.</p>
+
+      <h3>CONTRACT DIFFICULTY</h3>
+      <div class="opts" id="diff-opts">
+        <div class="opt sel" data-diff="0"><b>SURVEY RUN</b><span>Helios is slow and under-funded. Learn the controls.</span></div>
+        <div class="opt" data-diff="1"><b>CLAIM DISPUTE</b><span>Even footing. The intended contract.</span></div>
+        <div class="opt" data-diff="2"><b>HOSTILE TAKEOVER</b><span>Helios mines faster and raids early. Good luck.</span></div>
+      </div>
+
+      <div class="row">
+        <button class="btn big" id="btn-start">DEPLOY COLONY ►</button>
+        <button class="btn" id="btn-help-title">HOW TO PLAY</button>
+        <button class="btn" id="btn-mute">SOUND: ON</button>
+      </div>
+
+      <p class="footnote">An original fan-made game for the <a href="../../">Lunar Arcade</a>.
+      Inspired by the 1991 colony-sim classic — no original code, art or data is used or distributed here.</p>
+    </div>
+  </section>
+
+  <!-- ============================ HELP ============================ -->
+  <section id="screen-help" class="screen">
+    <div class="panel">
+      <h2>OPERATIONS MANUAL</h2>
+      <h1 style="font-size:30px">HOW TO PLAY</h1>
+
+      <div class="help-grid">
+        <div>
+          <h3>PILOTING DRONE-01</h3>
+          <ul>
+            <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — fly</li>
+            <li><kbd>SPACE</kbd> (hold) — bore the rock you are facing</li>
+            <li><kbd>Q</kbd> — drop an <b>ORE BEACON</b>: miners follow it</li>
+            <li><kbd>E</kbd> — drop a <b>RALLY BEACON</b>: guards converge on it</li>
+            <li><kbd>1</kbd> print miner &nbsp; <kbd>2</kbd> print guard &nbsp; <kbd>3</kbd> autofab</li>
+            <li><kbd>M</kbd> beacon overlay &nbsp; <kbd>P</kbd> pause &nbsp; <kbd>ESC</kbd> quit</li>
+            <li><kbd>F</kbd> — <b>autoplay</b>: hand DRONE-01 to the colony AI</li>
+            <li><kbd>[</kbd> <kbd>]</kbd> — simulation speed, 0.25&times; to 8&times;</li>
+          </ul>
+          <p class="dim">Cargo is picked up and unloaded automatically — bore a seam until
+          it breaks, then fly home through your own tunnels.</p>
+          <p class="dim">Autoplay runs the whole colony for you — it prospects by scent, hauls,
+          drops its own beacons, defends the fabricator and eventually mounts an assault. Touch
+          any movement key and you take the controls straight back.</p>
+        </div>
+
+        <div>
+          <h3>THE SWARM</h3>
+          <ul>
+            <li><b>Miners</b> wander, smell ore through rock, bore toward it and haul it home —
+                laying a scent trail on the return trip that other miners follow. That trail is
+                how a productive tunnel becomes a highway.</li>
+            <li><b>Guards</b> patrol the tunnels and run down any rally beacon or distress
+                scent. They are how you take ground.</li>
+            <li>Beacons evaporate. A route only stays busy while it keeps paying.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>THE FABRICATOR</h3>
+          <ul>
+            <li><span class="swatch" style="background:var(--ore)"></span><b>ORE</b> — structure. Printing bodies.</li>
+            <li><span class="swatch" style="background:var(--ice)"></span><b>ICE</b> — volatiles. Coolant and life support.</li>
+            <li><span class="swatch" style="background:var(--ok)"></span><b>POWER</b> — solar. Charges fast in the
+                lunar day, barely at all in the night. Print while the sun is up.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>THE OPPOSITION</h3>
+          <ul>
+            <li><span class="swatch" style="background:var(--red)"></span><b>Helios drones</b> mine the same
+                seams and raid your hub. Bore into <em>their</em> fabricator to end the contract.</li>
+            <li><span class="swatch" style="background:var(--violet)"></span><b>Tube crawlers</b> live in the deep
+                lava tubes and eat anything with a heat signature. Neither colony owns them.</li>
+            <li>If DRONE-01 is destroyed, your link jumps to the nearest surviving unit.
+                You only lose when the colony does.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn big" id="btn-help-back">◄ BACK</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ GAME ============================ -->
+  <section id="screen-game" class="screen">
+    <div class="hud">
+      <div class="stat"><span class="k">ORE</span><span class="v ore" id="hud-ore">0</span></div>
+      <div class="stat"><span class="k">ICE</span><span class="v ice" id="hud-ice">0</span></div>
+      <div class="stat"><span class="k">PWR</span><div class="bar pw"><i id="hud-pow"></i></div></div>
+      <div class="stat"><span class="k">SWARM</span><span class="v amb" id="hud-swarm">0</span></div>
+      <div class="stat"><span class="k">CARGO</span><span class="v" id="hud-cargo">0/4</span></div>
+      <div class="stat"><span class="k">HULL</span><div class="bar hp"><i id="hud-hp"></i></div></div>
+      <div class="spacer"></div>
+      <button class="minibtn" id="btn-auto" title="Let the colony AI pilot DRONE-01 (F)">AUTOPLAY: OFF</button>
+      <div class="stat"><span class="k">SPEED</span>
+        <select id="speed-dial" class="dial" aria-label="Simulation speed">
+          <option value="0.25">0.25&times;</option>
+          <option value="0.5">0.5&times;</option>
+          <option value="1" selected>1&times;</option>
+          <option value="2">2&times;</option>
+          <option value="4">4&times;</option>
+          <option value="8">8&times;</option>
+        </select>
+      </div>
+      <div class="stat"><span class="k" id="hud-phase">DAY</span><span class="v" id="hud-clock">0:00</span></div>
+      <div class="stat"><span class="k">BORE-1</span><div class="bar"><i id="hud-hub"></i></div></div>
+      <div class="stat"><span class="k">HELIOS</span><div class="bar foe"><i id="hud-foe"></i></div></div>
+    </div>
+
+    <div class="stage">
+      <canvas id="view" width="960" height="540"></canvas>
+      <canvas id="mini" width="200" height="120"></canvas>
+      <div id="ticker"></div>
+      <div id="banner"><div>
+        <h1 id="banner-title">PAUSED</h1>
+        <p id="banner-body" class="dim"></p>
+        <div class="row" style="justify-content:center">
+          <button class="btn big" id="btn-banner">RESUME</button>
+          <button class="btn" id="btn-quit">ABANDON CONTRACT</button>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="keys">
+      <span><kbd>WASD</kbd> fly</span>
+      <span><kbd>SPACE</kbd> bore</span>
+      <span><kbd>Q</kbd> ore beacon</span>
+      <span><kbd>E</kbd> rally beacon</span>
+      <span><kbd>1</kbd>/<kbd>2</kbd> print miner/guard</span>
+      <span><kbd>3</kbd> autofab</span>
+      <span><kbd>M</kbd> beacons</span>
+      <span><kbd>P</kbd> pause</span>
+      <span><kbd>F</kbd> autoplay</span>
+      <span><kbd>[</kbd> <kbd>]</kbd> speed</span>
+    </div>
+  </section>
+
+</div>
+<script src="game.js"></script>
+</body>
+</html>

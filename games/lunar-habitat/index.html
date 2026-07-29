@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lunar Habitat — Build Down, Build Up, Stay Alive</title>
+<meta name="description" content="A lunar colony construction sim in the spirit of the classic vertical builders. Excavate downward, tower upward, and keep everyone breathing.">
+<link rel="stylesheet" href="css/game.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23e6dcc4'/><circle cx='11' cy='12' r='3' fill='%23b3a892'/><circle cx='20' cy='20' r='4' fill='%23b3a892'/></svg>">
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <b>LUNAR HABITAT</b><br>
+        <span id="charter">OUTPOST · TIER 1</span>
+      </div>
+    </div>
+    <div class="stat hi"><div class="k">Credits</div><div class="v" id="s-credits">₵0</div></div>
+    <div class="stat"><div class="k">Balance</div><div class="v small" id="s-balance">—</div></div>
+    <div class="stat"><div class="k">Sol Day</div><div class="v small" id="s-day"><span class="phase-dot" id="s-phase"></span>1</div></div>
+    <div class="stat"><div class="k">Population</div><div class="v" id="s-pop">0</div><div class="sub" id="s-housing">0 berths</div></div>
+    <div class="stat"><div class="k">Morale</div><div class="v" id="s-morale">62</div></div>
+    <div class="stat"><div class="k">Power</div><div class="v small" id="s-power">0 / 0</div><div class="sub" id="s-store">bank 0</div></div>
+    <div class="stat"><div class="k">Life Support</div><div class="v small" id="s-life">O₂ · H₂O · Food</div></div>
+    <div id="speed">
+      <button data-sp="0">❚❚</button>
+      <button data-sp="1" class="on">▶</button>
+      <button data-sp="3">▶▶</button>
+      <button data-sp="8">▶▶▶</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="palette"></div>
+
+    <div id="stage">
+      <canvas id="cv"></canvas>
+      <div id="toast"></div>
+      <div id="hint">Pick a module on the left, then click the ground to build. Drag with the right mouse button or hold <b>Space</b> to pan.</div>
+    </div>
+
+    <div id="side">
+      <div id="tabs">
+        <button data-tab="status" class="on">Status</button>
+        <button data-tab="charter">Charter</button>
+        <button data-tab="log">Log</button>
+      </div>
+      <div id="panelbody"></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal">
+  <div class="card">
+    <h1>LUNAR HABITAT</h1>
+    <p class="lede">Mare Tranquillitatis · Colony Charter, Tier 1</p>
+    <p>You have been handed two hundred thousand credits, a patch of regolith, and a mandate: turn this
+    into a self-sustaining lunar colony. Everything above the surface is exposed to radiation and
+    micrometeorites. Everything below it has to be dug out first — and the deeper you go, the more it costs
+    and the safer it gets.</p>
+
+    <h2>The first ten minutes</h2>
+    <ul>
+      <li>Place a <b>Surface Airlock</b> on the surface deck. Every module in the colony is scored on how far it is from one.</li>
+      <li>Run a <b>Transit Shaft</b> down from the airlock — drag vertically to size it.</li>
+      <li>Hang <b>Corridors</b> off the shaft, then <b>Crew Pods</b>, an <b>O2 Scrubber</b>, a <b>Water Recycler</b> and a <b>Hydroponics Bay</b>.</li>
+      <li>Power it with a <b>Solar Array</b> on the surface — and a <b>Battery Bank</b>, because the lunar night is fourteen days long.</li>
+      <li>Add a <b>Landing Pad</b>. No pad, no immigration, no colony.</li>
+    </ul>
+
+    <h2>Rules that will bite you</h2>
+    <ul>
+      <li><b>Everything must connect.</b> Modules need an unbroken run of occupied cells back to a shaft and out to an airlock. A red <b>!</b> means nobody can reach it.</li>
+      <li><b>The night is long.</b> Solar output falls to zero for half of every 28-day cycle. Bank power, or bury a fission plant.</li>
+      <li><b>Radiation is depth.</b> Three levels of rock overhead is full shielding. Above that, put a Regolith Shield Cap on the level directly above your habitats — or lose people to the next solar flare.</li>
+      <li><b>Distance is misery.</b> Long walks to the airlock wreck morale. Mag-Lift shafts fix that.</li>
+    </ul>
+
+    <h2>Controls</h2>
+    <p><kbd>Left click</kbd> build · <kbd>Right drag</kbd> or <kbd>Space</kbd> pan · <kbd>Scroll</kbd> zoom ·
+    <kbd>X</kbd> bulldoze · <kbd>Esc</kbd> clear tool · <kbd>1</kbd>–<kbd>4</kbd> speed · <kbd>?</kbd> this screen</p>
+
+    <button class="go" id="btn-start">Break Ground</button>
+    <button class="ghost" id="btn-load">Resume Saved Colony</button>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/grid.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
