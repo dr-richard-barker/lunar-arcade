@@ -47,6 +47,24 @@ let over = false, overWin = false;
 let diff = 0, muted = false, showBeacons = false;
 let frame = 0, navDirty = true, navTimer = 0;
 let swarmPeak = 0, autoUsed = false, lastRun = null;
+
+/* Tripwire config. Declared up here because the URL-flag parser below arms it
+   at top level, and a `const` cannot be touched before its initialiser runs. */
+const TRIP = {
+  on: false,
+  eps: 1.2,            // px of travel below which an agent counts as motionless
+  idle: 25,            // seconds motionless AND unproductive before it is wedged
+  transient: 90,       // seconds a *transient* agent state may persist
+  autoTransient: 60,   // seconds a *transient* autoplay mode may persist
+  fired: [],
+};
+/* Only states that are supposed to finish get policed. 'search' and 'patrol'
+   are steady states an agent can legitimately hold for a whole contract, so
+   flagging them on duration alone produces noise, and a noisy tripwire is one
+   that gets ignored. 'home' must terminate at the hub; 'repair' was the mode
+   that actually deadlocked, because its exit depended on unloading cargo. */
+const TRANSIENT_STATES = ['home'];
+const TRANSIENT_MODES  = ['repair', 'haul', 'defend'];
 let logLines = [];
 
 /* --------------------------------------------------------------- elements */
@@ -84,7 +102,31 @@ function noise2(x, y, sc, s) {
 function fbm(x, y, sc, s) {
   return noise2(x, y, sc, s) * 0.64 + noise2(x, y, sc * 0.42, s + 97) * 0.36;
 }
-const rnd = (a, b) => a + Math.random() * (b - a);
+/* ==========================================================================
+   SIMULATION RNG
+   World generation was always deterministic (nrand/noise2/fbm above), but the
+   agents were not, which made a soak failure impossible to replay. These are
+   the *simulation* draws; cosmetic randomness (audio timbre, dust particles,
+   whether a hit plays a sound) deliberately stays on Math.random() so visual
+   noise can never consume simulation entropy and shift an outcome.
+   ========================================================================== */
+let seed0 = 0, seedState = 0;
+function mulberry32() {
+  seedState = (seedState + 0x6D2B79F5) | 0;
+  let t = seedState;
+  t = Math.imul(t ^ (t >>> 15), 1 | t);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function setSeed(n) { seed0 = n >>> 0; seedState = seed0; }
+const srnd = () => mulberry32();                       // 0..1, seeded
+const rnd = (a, b) => a + srnd() * (b - a);            // seeded range
+const sangle = () => srnd() * 6.2832;
+/* Cosmetics get their OWN unseeded generator. This matters more than it looks:
+   particle spawns are gated by unseeded chance but were drawing from the seeded
+   stream, so the number of draws differed between two runs of the same seed and
+   the simulation desynchronised. Visual noise must never touch sim entropy. */
+const crnd = (a, b) => a + Math.random() * (b - a);
 
 function solidPx(px, py) {
   const tx = px / TS | 0, ty = py / TS | 0;
@@ -550,21 +592,23 @@ function spawnDrone(col, caste, x, y) {
     col, caste, x, y, vx: 0, vy: 0,
     hp: guard ? 130 : 80, max: guard ? 130 : 80,
     ore: 0, ice: 0, cap: 3,
-    state: 'search', dig: -1, wob: Math.random() * 6.28,
+    state: 'search', dig: -1, wob: srnd() * 6.28,
     cd: 0, hurt: 0, alive: true, boreTile: -1, assault: false,
-    stuck: 0, panic: 0, px: 0, py: 0,
+    stuck: 0, panic: 0, px: 0, py: 0, _boreT: 0,
+    // stamped now, not 0: a drone printed at t=300s has not been idle for 300s
+    _lastWin: clock ? clock.elapsed : 0,
   };
   drones.push(d);
   return d;
 }
 
 function spawnCrawler(x, y) {
-  crawlers.push({ x, y, vx: 0, vy: 0, hp: 110, max: 110, cd: 0, wob: Math.random() * 6.28, alive: true });
+  crawlers.push({ x, y, vx: 0, vy: 0, hp: 110, max: 110, cd: 0, wob: srnd() * 6.28, alive: true });
 }
 
 function puff(x, y, col, n) {
   for (let i = 0; i < n; i++)
-    parts.push({ x, y, vx: rnd(-45, 45), vy: rnd(-45, 45), life: rnd(0.25, 0.7), age: 0, c: col });
+    parts.push({ x, y, vx: crnd(-45, 45), vy: crnd(-45, 45), life: crnd(0.25, 0.7), age: 0, c: col });
 }
 
 /* ------------------------------------------------------------------ mining */
@@ -597,11 +641,12 @@ function bore(tx, ty, work, colId, taker, hubFactor) {
   if (!SOLID[t] || t === BED) return false;
 
   dmg[i] += work;
-  if (Math.random() < 0.2) puff(tx * TS + rnd(3, TS - 3), ty * TS + rnd(3, TS - 3), t === ORE ? '#d2953f' : t === ICE ? '#6fd6e8' : '#6b6355', 1);
+  if (Math.random() < 0.2) puff(tx * TS + crnd(3, TS - 3), ty * TS + crnd(3, TS - 3), t === ORE ? '#d2953f' : t === ICE ? '#6fd6e8' : '#6b6355', 1);
   if (dmg[i] < HARD[t]) return false;
 
   // broke through — cargo is capped on the total, not per resource
   if (taker) {
+    taker._lastWin = clock.elapsed;
     const room = taker.cap - (taker.ore + taker.ice);
     if (room > 0) {
       const gain = Math.min(2, room);
@@ -678,6 +723,15 @@ try {
     for (const a in DEFAULT_BINDS) if (Array.isArray(saved[a]) && saved[a].length) binds[a] = saved[a];
 } catch (e) {}
 function saveBinds() { try { localStorage.setItem('bmg_binds', JSON.stringify(binds)); } catch (e) {} }
+
+/* ---- URL flags: ?debug=1 arms the tripwires, ?seed=N pins the world ---- */
+let pinnedSeed = null;
+try {
+  const q = new URLSearchParams(location.search);
+  if (q.get('debug') === '1' || q.has('test')) TRIP.on = true;
+  const sd = q.get('seed');
+  if (sd !== null && sd !== '' && Number.isFinite(+sd)) pinnedSeed = (+sd) >>> 0;
+} catch (e) {}
 
 const keys = {};
 const normKey = e => (e.key === ' ' ? ' ' : e.key.toLowerCase());
@@ -873,6 +927,10 @@ function startGame() {
   clock = { t: 0, day: true, phase: DAY_LEN, elapsed: 0 };
   over = false; overWin = false; paused = false; showBeacons = false;
   frame = 0; acc = 0;
+  // Seed the contract. A pinned ?seed= replays an exact run; otherwise the
+  // chosen seed is recorded on the league row so any run can be reproduced.
+  setSeed(pinnedSeed !== null ? pinnedSeed : (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+  TRIP.fired.length = 0; TRIP._amode = null; TRIP._aage = 0;
   $('banner').classList.remove('on');
   $('banner-title').style.color = '';
   auto.mode = 'mine'; auto.beaconCd = 0; auto.orderCd = 0; auto.sieging = false;
@@ -891,7 +949,7 @@ function startGame() {
   const nCrawl = DIFF[diff].crawlers;
   let placed = 0, guardTries = 0;
   while (placed < nCrawl && guardTries++ < 4000) {
-    const tx = 10 + (Math.random() * (MW - 20) | 0), ty = 58 + (Math.random() * (MH - 62) | 0);
+    const tx = 10 + (srnd() * (MW - 20) | 0), ty = 58 + (srnd() * (MH - 62) | 0);
     if (!inb(tx, ty) || SOLID[map[idx(tx, ty)]]) continue;
     spawnCrawler(tx * TS + TS / 2, ty * TS + TS / 2); placed++;
   }
@@ -981,7 +1039,7 @@ function recordResult(win) {
     mined: Math.round(c.mined), shipped: Math.round(c.shipped),
     tier: c.tier, printed: c.printed, lost: c.lost,
     peak: swarmPeak, hub: Math.round(Math.max(0, c.integrity)),
-    auto: autoUsed,
+    auto: autoUsed, seed: seed0, v: 2,
   };
   r.score = scoreRun(r);
   const all = loadLeague();
@@ -1038,6 +1096,75 @@ function quitToTitle() { running = false; $('banner').classList.remove('on'); sh
 /* ------------------------------------------------------------------ update */
 const g0 = [0, 0], g1 = [0, 0];
 
+/* ==========================================================================
+   TRIPWIRES  (armed with ?debug=1, or by the soak harness)
+
+   Every bug ever found in this game was a *liveness* failure, not a wrong
+   value: agents that stopped moving while still claiming to be busy, a state
+   whose exit could never fire, a NaN that quietly poisoned a velocity. None
+   would be caught by a unit test on any single component — the wedging bug
+   lived between a correct collider and a world shape it could not traverse.
+   So the check is not "is this value right" but "is anything stuck".
+   ========================================================================== */
+function tripFail(kind, detail) {
+  if (TRIP.fired.some(f => f.kind === kind)) return;   // once per kind, loudly
+  const rec = { kind, detail, at: +clock.elapsed.toFixed(1), frame };
+  TRIP.fired.push(rec);
+  console.error('[TRIPWIRE] ' + kind + ' @ t=' + rec.at + 's', detail);
+  if (typeof log === 'function') log('<span class="warn">TRIPWIRE: ' + kind + '</span>');
+}
+
+const finite2 = (a, b) => Number.isFinite(a) && Number.isFinite(b);
+
+function checkTripwires(dt) {
+  // 1. NaN sweep — one poisoned coordinate ruins the run from that frame on
+  if (!finite2(cam.x, cam.y)) tripFail('nan-camera', { x: cam.x, y: cam.y });
+  for (const d of drones) {
+    if (!d.alive) continue;
+    if (!finite2(d.x, d.y) || !finite2(d.vx, d.vy))
+      { tripFail('nan-drone', { col: d.col, caste: d.caste, x: d.x, y: d.y, vx: d.vx, vy: d.vy }); break; }
+  }
+  for (const c of crawlers)
+    if (c.alive && !finite2(c.x, c.y)) { tripFail('nan-crawler', { x: c.x, y: c.y }); break; }
+  for (const s of ships)
+    if (!finite2(s.x, s.y)) { tripFail('nan-ship', { x: s.x, y: s.y }); break; }
+
+  // 2. Motionless but active, and 3. stale AI state
+  for (const d of drones) {
+    if (!d.alive) continue;
+    // Wedged means motionless *and* achieving nothing. A drone parked on a
+    // basalt seam is stationary by design, so movement alone proves little —
+    // what proves a wedge is that it has not broken a tile or unloaded either.
+    if (d._lx === undefined) { d._lx = d.x; d._ly = d.y; d._still = 0; }
+    const travelled = Math.hypot(d.x - d._lx, d.y - d._ly);
+    d._still = travelled < TRIP.eps ? d._still + dt : 0;
+    d._lx = d.x; d._ly = d.y;
+    const notDrilling = clock.elapsed - (d._boreT === undefined ? 0 : d._boreT);
+    if (d._still > TRIP.idle && notDrilling > TRIP.idle)
+      tripFail('agent-wedged', { col: d.col, caste: d.caste, state: d.state,
+        x: Math.round(d.x), y: Math.round(d.y), stillFor: +d._still.toFixed(1),
+        notDrillingFor: +notDrilling.toFixed(1), stuckTimer: +(d.stuck || 0).toFixed(1),
+        panic: +(d.panic || 0).toFixed(1), speed: +Math.hypot(d.vx, d.vy).toFixed(1),
+        tile: map[idx(d.x / TS | 0, d.y / TS | 0)] });
+
+    if (d._pstate !== d.state) { d._pstate = d.state; d._stateAge = 0; }
+    d._stateAge = (d._stateAge || 0) + dt;
+    if (TRANSIENT_STATES.includes(d.state) && d._stateAge > TRIP.transient)
+      tripFail('state-stuck', { col: d.col, caste: d.caste, state: d.state,
+        heldFor: +d._stateAge.toFixed(1), cargo: d.ore + d.ice,
+        homeDist: home[d.col][idx(d.x / TS | 0, d.y / TS | 0)] });
+  }
+
+  // the pilot's own autopilot mode is the state that deadlocked before
+  if (auto.on) {
+    if (TRIP._amode !== auto.mode) { TRIP._amode = auto.mode; TRIP._aage = 0; }
+    TRIP._aage = (TRIP._aage || 0) + dt;
+    if (TRANSIENT_MODES.includes(auto.mode) && TRIP._aage > TRIP.autoTransient)
+      tripFail('autoplay-mode-stuck', { mode: auto.mode, heldFor: +TRIP._aage.toFixed(1),
+        hp: Math.round(player.hp), max: player.max, cargo: player.ore + player.ice });
+  }
+}
+
 function update(dt) {
   frame++;
   clock.elapsed += dt;
@@ -1063,6 +1190,8 @@ function update(dt) {
   combat(dt);
   for (const c of colonies) updateColony(c, dt);
   updateShips(dt);
+
+  if (TRIP.on && frame % 6 === 0) checkTripwires(dt * 6);
 
   // reap
   if (frame % 30 === 0) {
@@ -1231,8 +1360,13 @@ function autopilot(dt) {
   }
 
   // same stuck-breaker the swarm uses
-  if (Math.hypot(p.vx, p.vy) < 18) p.stuck = (p.stuck || 0) + dt; else p.stuck = 0;
-  if (p.stuck > 0.9) { p.stuck = 0; p.panic = 1.3; const a = Math.random() * 6.2832; p.px = Math.cos(a); p.py = Math.sin(a); }
+  p._dt = (p._dt || 0) + dt;
+  if (p._dt >= 0.5) {
+    const sx = p._sx === undefined ? p.x : p._sx, sy = p._sy === undefined ? p.y : p._sy;
+    p.stuck = Math.hypot(p.x - sx, p.y - sy) < 6 ? (p.stuck || 0) + p._dt : 0;
+    p._sx = p.x; p._sy = p.y; p._dt = 0;
+  }
+  if (p.stuck > 0.9) { p.stuck = 0; p.panic = 1.3; const a = sangle(); p.px = Math.cos(a); p.py = Math.sin(a); }
   if (p.panic > 0) { p.panic -= dt; wx = p.px; wy = p.py; }
 
   const m = Math.hypot(wx, wy) || 1;
@@ -1304,10 +1438,19 @@ function updateDrone(d, dt) {
   // Stuck-breaker: a drone pinned against geometry commits to one random
   // heading for a moment, which puts rock in front of it and lets the bore
   // step below cut a way out.
-  if (Math.hypot(d.vx, d.vy) < 18) d.stuck += dt; else d.stuck = 0;
+  // Displacement, not speed. A drone orbiting a local minimum of the scent
+  // field carries real velocity and gets nowhere, so a speed test never fires
+  // and it can idle away an entire contract. Net progress is the only signal
+  // that distinguishes "working" from "busy".
+  d._dt = (d._dt || 0) + dt;
+  if (d._dt >= 0.5) {
+    const sx = d._sx === undefined ? d.x : d._sx, sy = d._sy === undefined ? d.y : d._sy;
+    d.stuck = Math.hypot(d.x - sx, d.y - sy) < 6 ? d.stuck + d._dt : 0;
+    d._sx = d.x; d._sy = d.y; d._dt = 0;
+  }
   if (d.stuck > 0.9) {
     d.stuck = 0; d.panic = 1.3;
-    const a = Math.random() * 6.2832;
+    const a = sangle();
     d.px = Math.cos(a); d.py = Math.sin(a);
   }
   if (d.panic > 0) { d.panic -= dt; wx = d.px; wy = d.py; }
@@ -1325,11 +1468,13 @@ function updateDrone(d, dt) {
     const t = map[idx(ntx, nty)];
     if (SOLID[t] && t !== BED) {
       // miners bore anything; guards only bore to reach the enemy
-      if (d.caste === 'miner' || d.state === 'assault' || d.state === 'defend')
+      if (d.caste === 'miner' || d.state === 'assault' || d.state === 'defend') {
+        d._boreT = clock.elapsed;                     // drilling counts as working
         if (bore(ntx, nty, (d.caste === 'miner' ? 58 : 34) * dt, d.col, d.caste === 'miner' ? d : null))
           d.cd = 0;
+      }
     } else if (t === RHUB || t === HUB) {
-      if ((t === HUB ? PLAYER : HELIOS) !== d.col) bore(ntx, nty, 42 * dt, d.col, null);
+      if ((t === HUB ? PLAYER : HELIOS) !== d.col) { d._boreT = clock.elapsed; bore(ntx, nty, 42 * dt, d.col, null); }
     }
   }
 
@@ -1367,7 +1512,7 @@ function deposit(d, dt) {
   c.pendingShip += cut;
   c.ore += d.ore - cut; c.ice += d.ice; c.mined += d.ore + d.ice;
   if (d.isPlayer) { sfx.deposit(); log('Unloaded <b>' + d.ore + ' ore</b>, <b>' + d.ice + ' ice</b>.'); }
-  d.ore = 0; d.ice = 0; d.cd = 0;
+  d.ore = 0; d.ice = 0; d.cd = 0; d._lastWin = clock.elapsed;
 }
 
 function moveEnt(e, dt, r) {
@@ -1946,8 +2091,8 @@ function updateShips(dt) {
     // exhaust plume + regolith kicked off the pad
     if (s.age < 3.2) {
       for (let k = 0; k < 2; k++)
-        parts.push({ x: s.x + rnd(-3, 3), y: s.y + 12, vx: rnd(-70, 70), vy: rnd(30, 130),
-                     life: rnd(0.3, 0.8), age: 0, c: k ? '#ffd08a' : '#fff3d6' });
+        parts.push({ x: s.x + crnd(-3, 3), y: s.y + 12, vx: crnd(-70, 70), vy: crnd(30, 130),
+                     life: crnd(0.3, 0.8), age: 0, c: k ? '#ffd08a' : '#fff3d6' });
     }
     if (s.y < -260) ships.splice(i, 1);
   }

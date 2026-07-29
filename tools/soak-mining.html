@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Soak — The Boring Mining Game</title>
+<style>
+  body{margin:0;padding:24px;background:#05070c;color:#dfe7f2;
+       font:13px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  h1{font-size:16px;letter-spacing:.2em;color:#ffc857;margin:0 0 4px}
+  p.sub{color:#7d8ca3;margin:0 0 18px;max-width:80ch}
+  #out{white-space:pre-wrap;border:1px solid #1e2b3d;border-radius:8px;
+       padding:14px 16px;background:#0d1420;min-height:140px}
+  .pass{color:#5fd48a;font-weight:700}
+  .fail{color:#ff5a5a;font-weight:700}
+  .dim{color:#7d8ca3}
+  .hdr{color:#6fd6e8}
+  button{font:700 12px/1 ui-monospace,monospace;letter-spacing:.12em;color:#ffc857;
+         background:#1a1509;border:1px solid #8a6b2c;border-radius:7px;
+         padding:11px 16px;cursor:pointer;margin:0 8px 16px 0}
+  label{color:#7d8ca3;margin-right:14px}
+  input{font:12px ui-monospace,monospace;background:#111a29;color:#dfe7f2;
+        border:1px solid #1e2b3d;border-radius:5px;padding:7px 9px;width:120px}
+  /* The game needs its DOM to exist, but we never look at it. */
+  #host{position:fixed;left:-9999px;top:0;width:1280px;height:720px}
+</style>
+</head>
+<body>
+
+<h1>SOAK — THE BORING MINING GAME</h1>
+<p class="sub">Runs the autoplay agent to completion on every difficulty with the tripwires armed,
+then asserts the run stayed alive and finite. This is the check that found every real bug in this
+game; it exists so the next one is caught by a file rather than by luck. Nothing here is a unit
+test — all four historic bugs were liveness failures that unit tests would have passed.</p>
+
+<div>
+  <label>seed <input id="seed" value="1234" inputmode="numeric"></label>
+  <label>step budget <input id="budget" value="90000"></label>
+</div>
+<button id="run">RUN SOAK</button>
+<button id="rerun">RE-RUN SAME SEED (determinism)</button>
+<div id="out" class="dim">Idle.</div>
+
+<!-- the game's own DOM, offscreen: game.js grabs these at load -->
+<div id="host"></div>
+
+<script>
+const out = document.getElementById('out');
+let html = '';
+const w = (s, cls) => { html += cls ? '<span class="' + cls + '">' + s + '</span>\n' : s + '\n'; out.innerHTML = html; };
+const clear = () => { html = ''; out.innerHTML = ''; };
+
+/* The game is a classic script: its top-level `const`/`let` land in the shared
+   global lexical scope, so once it has loaded we can drive `update()` and read
+   `drones`, `colonies`, `TRIP` and friends directly. No exports, no refactor —
+   and this is exactly the property that ES modules would take away. */
+function loadGame(seed) {
+  return new Promise((resolve, reject) => {
+    const host = document.getElementById('host');
+    host.innerHTML = '';
+    fetch('../games/boring-mining/index.html')
+      .then(r => r.text())
+      .then(txt => {
+        // lift the game's markup in, minus its own <script> tag
+        const doc = new DOMParser().parseFromString(txt, 'text/html');
+        const app = doc.getElementById('app');
+        if (!app) return reject(new Error('could not find #app in the game page'));
+        host.appendChild(app);
+        history.replaceState(null, '', '?debug=1&seed=' + seed);
+        const s = document.createElement('script');
+        s.src = '../games/boring-mining/game.js';
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('game.js failed to load'));
+        document.body.appendChild(s);
+      })
+      .catch(reject);
+  });
+}
+
+const DIFFS = [0, 1, 2];
+
+function runContract(d, budget) {
+  diff = d;
+  document.getElementById('btn-start').click();
+  setAuto(true);
+  let steps = 0;
+  while (!over && steps < budget) { update(1 / 60); steps++; }
+  const c = colonies[PLAYER];
+  return {
+    name: DIFF[d].name,
+    finished: over, won: overWin, steps,
+    simMins: +(clock.elapsed / 60).toFixed(1),
+    mined: Math.round(c.mined), shipped: Math.round(c.shipped), tier: c.tier,
+    swarm: drones.filter(x => x.alive && x.col === PLAYER).length,
+    score: lastRun ? lastRun.score : null,
+    seed: seed0,
+    trips: TRIP.fired.slice(),
+    finite: Number.isFinite(cam.x) && Number.isFinite(player.x) &&
+            drones.every(x => !x.alive || Number.isFinite(x.x)),
+  };
+}
+
+function report(rows) {
+  let fails = 0;
+  for (const r of rows) {
+    w('');
+    w('── ' + r.name + ' ' + '─'.repeat(Math.max(1, 26 - r.name.length)), 'hdr');
+    w('   seed ' + r.seed + '  ·  ' + r.steps + ' steps  ·  ' + r.simMins + ' sim-min');
+    w('   mined ' + r.mined + '  shipped ' + r.shipped + ' t  tier ' + r.tier +
+      '  swarm ' + r.swarm + '  score ' + (r.score === null ? '—' : r.score));
+
+    const checks = [
+      ['run terminates within budget', r.finished],
+      ['all coordinates finite',       r.finite],
+      ['no tripwire fired',            r.trips.length === 0],
+      ['league row written',           r.score !== null],
+    ];
+    for (const [label, ok] of checks) {
+      w('   ' + (ok ? '✓ ' : '✗ ') + label, ok ? 'pass' : 'fail');
+      if (!ok) fails++;
+    }
+    for (const t of r.trips)
+      w('     ↳ ' + t.kind + ' @ ' + t.at + 's ' + JSON.stringify(t.detail), 'fail');
+    if (!r.won && r.finished)
+      w('   note: contract lost — not a failure, but the agent usually wins', 'dim');
+  }
+  w('');
+  w(fails === 0 ? 'SOAK PASSED — ' + rows.length + ' contracts, 0 failures'
+                : 'SOAK FAILED — ' + fails + ' failed check' + (fails === 1 ? '' : 's'),
+    fails === 0 ? 'pass' : 'fail');
+  return fails;
+}
+
+let loaded = false;
+async function soak() {
+  clear();
+  const seed = (+document.getElementById('seed').value || 0) >>> 0;
+  const budget = +document.getElementById('budget').value || 90000;
+  w('Loading game with ?debug=1&seed=' + seed + ' …', 'dim');
+  if (!loaded) {
+    try { await loadGame(seed); loaded = true; }
+    catch (e) { w('LOAD FAILED: ' + e.message, 'fail');
+                w('Serve this over http:// — fetch() cannot read file:// pages.', 'dim'); return null; }
+  }
+  if (!TRIP.on) { w('WARNING: tripwires are not armed — check the ?debug flag', 'fail'); }
+  pinnedSeed = seed;
+  w('Tripwires armed. Running ' + DIFFS.length + ' contracts…', 'dim');
+  const rows = DIFFS.map(d => runContract(d, budget));
+  const fails = report(rows);
+  return { rows, fails, seed };
+}
+
+document.getElementById('run').onclick = () => soak();
+
+/* Determinism check: the same seed must produce byte-identical outcomes, or a
+   soak failure can never be replayed and is therefore not a bug you can fix. */
+document.getElementById('rerun').onclick = async () => {
+  const a = await soak();
+  if (!a) return;
+  w('');
+  w('Re-running the same seed to check determinism…', 'dim');
+  const b = { rows: DIFFS.map(d => runContract(d, +document.getElementById('budget').value || 90000)) };
+  let same = true;
+  for (let i = 0; i < a.rows.length; i++) {
+    const x = a.rows[i], y = b.rows[i];
+    const match = x.mined === y.mined && x.shipped === y.shipped &&
+                  x.tier === y.tier && x.score === y.score;
+    w('   ' + (match ? '✓ ' : '✗ ') + x.name + ': mined ' + x.mined + '/' + y.mined +
+      '  shipped ' + x.shipped + '/' + y.shipped + '  score ' + x.score + '/' + y.score,
+      match ? 'pass' : 'fail');
+    if (!match) same = false;
+  }
+  w('');
+  w(same ? 'DETERMINISTIC — same seed, same outcome'
+         : 'NOT DETERMINISTIC — a soak failure could not be replayed', same ? 'pass' : 'fail');
+};
+</script>
+</body>
+</html>

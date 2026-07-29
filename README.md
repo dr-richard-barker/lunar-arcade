@@ -51,6 +51,14 @@ formula inverted: the surface is the most dangerous floor in the building.
   (×1.5 for Lunar Capital, ×0.4 for a collapse). Runs are badged MANUAL, AUTO
   or SANDBOX; sandbox runs are filed unranked.
 
+### Balance harness
+
+`tools/harness.html` runs the real simulation headlessly and asserts on the outcome — three
+scenarios covering whether the final charter tier is reachable at all, whether a competent opening
+survives 400 days, and whether the autopilot survives 3,000 days unattended. It loads only
+config/grid/sim/autopilot/league, so it writes nothing to localStorage and cannot disturb a saved
+colony. Open it and press *Run all scenarios*, or append `?run` to the URL.
+
 ### Balance notes
 
 The colony economy was retuned in July 2026 after instrumenting a mature

@@ -31,8 +31,8 @@
   <div class="tiles">
     <div class="tile g">
       <div class="k">Sites operational</div>
-      <div class="v" data-count="3">0<small> / 3</small></div>
-      <div class="n">Extraction, habitation and agriculture all live</div>
+      <div class="v" id="tile-sites">&mdash;<small> / 3</small></div>
+      <div class="n" id="tile-sites-note">Counting sites that can actually report</div>
     </div>
     <div class="tile">
       <div class="k">Claim surveyed</div>
@@ -61,6 +61,7 @@
         <h3>BORE-1 &mdash; The Boring Mining Game</h3>
       </div>
       <div class="spacer"></div>
+      <span class="chip live">LIVE DOWNLINK</span>
       <span class="chip op">OPERATIONAL</span>
     </div>
     <div class="site-body">
@@ -102,6 +103,7 @@
           </li>
         </ul>
         <div class="tele">
+          <p class="prov spec">DESIGN SPEC &middot; measured from the build, not live telemetry</p>
           <dl>
             <dt>Ore grade across claim</dt><dd class="a">4.9 %</dd>
             <dt>Volatile (ice) grade</dt><dd class="c">5.0 %</dd>
@@ -125,6 +127,7 @@
         <h3>HABITAT ONE &mdash; Lunar Habitat</h3>
       </div>
       <div class="spacer"></div>
+      <span class="chip live">LIVE DOWNLINK</span>
       <span class="chip op">OPERATIONAL</span>
     </div>
     <div class="site-body">
@@ -165,6 +168,7 @@
           </li>
         </ul>
         <div class="tele">
+          <p class="prov spec">DESIGN SPEC &middot; measured from the build, not live telemetry</p>
           <dl>
             <dt>Build envelope</dt><dd>+26 / &minus;24 levels</dd>
             <dt>Module catalogue</dt><dd class="a">33 types</dd>
@@ -174,6 +178,7 @@
             <dt>Site record</dt><dd>autosaved, 90 s</dd>
           </dl>
         </div>
+        <div class="tele" id="habitat-record"></div>
       </div>
     </div>
   </article>
@@ -186,6 +191,7 @@
         <h3>LUNAR FARM</h3>
       </div>
       <div class="spacer"></div>
+      <span class="chip offsite" title="Served from a different origin, so its records cannot be read from here">OFF-SITE · NO DOWNLINK</span>
       <span class="chip op">OPERATIONAL</span>
     </div>
     <div class="site-body">
@@ -311,14 +317,52 @@ addEventListener('load', () => {
 const DIFF_NAMES = ['SURVEY RUN', 'CLAIM DISPUTE', 'HOSTILE TAKEOVER'];
 const mmss = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 
+function readLeague(key) {
+  try { const a = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+
+/* Both local games are same-origin, so both leagues are genuinely readable.
+   The farm is served from a different origin — its localStorage is unreachable
+   by construction, and no amount of work short of a backend changes that. */
+const MINING_ROWS  = readLeague('bmg_league');
+const HABITAT_ROWS = readLeague('lunarhabitat.league.v1');
+
+(function sitesTile() {
+  const reporting = [MINING_ROWS.length > 0, HABITAT_ROWS.length > 0].filter(Boolean).length;
+  document.getElementById('tile-sites').innerHTML = reporting + '<small> / 3</small>';
+  document.getElementById('tile-sites-note').textContent = reporting === 0
+    ? 'No contracts filed yet — play a site to bring it on downlink'
+    : reporting + ' of 2 local sites reporting · the farm is off-site';
+})();
+
+(function habitatPanel() {
+  const el = document.getElementById('habitat-record');
+  if (!el) return;
+  if (!HABITAT_ROWS.length) {
+    el.innerHTML = '<p class="prov live">LIVE &middot; no runs filed yet</p>' +
+      '<p class="norec" style="margin:0">Habitat One has filed no charters. Finish a run and its ' +
+      'record appears here automatically.</p>';
+    return;
+  }
+  const r = HABITAT_ROWS.slice().sort((a, b) => b.score - a.score)[0];
+  const n = HABITAT_ROWS.length;
+  el.innerHTML = '<p class="prov live">LIVE &middot; read from the site\'s own flight log</p>' +
+    '<dl>' +
+    '<dt>Charters filed</dt><dd>' + n + '</dd>' +
+    '<dt>Best score</dt><dd class="a">' + (r.score || 0).toLocaleString('en-US') + '</dd>' +
+    '<dt>Outcome</dt><dd class="g">' + (r.outcomeLabel || r.outcome || '\u2014') + '</dd>' +
+    '<dt>Days survived</dt><dd>' + (r.day || 0).toLocaleString('en-US') + '</dd>' +
+    '<dt>Mode</dt><dd class="c">' + (r.mode || '\u2014') + '</dd>' +
+    '</dl>';
+})();
+
 (function renderRecord() {
-  let rows = [];
-  try { const a = JSON.parse(localStorage.getItem('bmg_league') || '[]'); if (Array.isArray(a)) rows = a; }
-  catch (e) { rows = []; }
+  let rows = MINING_ROWS.slice();
   const el = document.getElementById('record');
 
   if (!rows.length) {
-    el.innerHTML = '<div class="norec">No contracts filed yet. Run a shift at ' +
+    el.innerHTML = '<div class="norec">No BORE-1 contracts filed yet. Run a shift at ' +
       '<a href="../games/boring-mining/">BORE-1</a> and the results are logged here automatically.</div>';
     return;
   }

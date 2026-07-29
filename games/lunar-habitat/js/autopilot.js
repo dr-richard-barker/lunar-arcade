@@ -39,14 +39,26 @@
     return out;
   }
 
-  /* Reserved columns that do not yet carry a shaft. */
+  /* Reserved columns that do not yet carry a shaft.
+
+     Cached per step. hitsReserved() is consulted once per candidate column, and
+     growOnLevel scans the full width across every active level, so an uncached
+     full-instance scan here cost on the order of 10^8 operations a day in a
+     mature colony — enough to stall the game at 8x speed. The set can only
+     change when a shaft is placed, and a step returns immediately after doing
+     so, so one computation per step is exact rather than merely close. */
+  var _resCache = null;
+  function invalidateReserved() { _resCache = null; }
+
   function reservedFree(s) {
+    if (_resCache) return _resCache;
     var plan = planCols(s), taken = {}, out = [];
     for (var k in s.inst) {
       var i = s.inst[k];
       if (i.mid === 'lift' || i.mid === 'express') taken[i.x] = true;
     }
     for (var j = 0; j < plan.length; j++) if (!taken[plan[j]]) out.push(plan[j]);
+    _resCache = out;
     return out;
   }
 
@@ -172,6 +184,7 @@
   /* Returns true if it did something. Called up to twice per day. */
   function step(s) {
     var st = s.stats, i;
+    invalidateReserved();
 
     /* 0 - demolish anything orphaned (except inert shields) */
     for (var iid in s.inst) {

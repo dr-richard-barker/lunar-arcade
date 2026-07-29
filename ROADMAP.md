@@ -134,22 +134,67 @@ against.
 - **If a description says "in range", the code must check range.** Several module descriptions
   promise behaviour the simulation implements globally, or not at all.
 
+The following four came out of the mining game rather than the colony, and are about agents and
+physics rather than economies. They generalise.
+
+- **A diffusing signal that evaporates cannot serve as a global recall.** Alarm pheromone decayed to
+  nothing long before it crossed the map, so guards on the far side of the claim never learned the
+  fabricator was being drilled. A colony under attack needs an explicit colony-level order; a field
+  gradient is a *local* signal and can only ever be one.
+- **A collider that resolves axes separately cannot traverse a diagonal-only gap.** Drones bored
+  diagonally, which produced staircases with no orthogonal opening, and then wedged in them —
+  permanently, while still reporting a live non-idle state. Agents that dig must dig orthogonally.
+  Note that a unit test on the collider would have *passed*: the collider was correct and world
+  generation produced a shape it could not traverse. The bug lived between two correct components,
+  which is exactly what unit tests cannot see.
+- **A state must not be enterable when its exit condition cannot fire.** The autoplay agent fled home
+  to repair, but repair only ever happened as a side effect of unloading cargo — so an agent that
+  arrived empty sat there forever. Every state needs an exit that does not depend on an unrelated
+  event.
+- **Never divide by a layout measurement.** Screen-to-world conversion divided by the canvas's
+  bounding rect, which is zero in a hidden tab or a collapsed container. The scale factor becomes
+  Infinity, NaN reaches the entity's velocity, and the run is unrecoverable from that frame on.
+
 ---
 
 ## 4. Forward roadmap
 
 Priority: **finish Lunar Habitat**. Depth over breadth — the trilogy is already complete.
 
-### Phase 1 — Make the ceiling provable
+### Phase 1 — Make the ceiling provable ✅ done
 
-`tools/harness.html`: a headless scenario runner reusing `LH.newState`, `LH.place`, `LH.tick` and
-`LH.scoreRun` directly, with no new simulation code. Three scenarios as assertions:
+[`tools/harness.html`](tools/harness.html) — a headless scenario runner reusing `LH.newState`,
+`LH.place`, `LH.tick` and `LH.scoreRun` with no new simulation code. It loads config/grid/sim/
+autopilot/league only, so there is no canvas, no autosave and **no localStorage write** (verified with
+a sentinel: a harness run cannot touch a saved colony or the league). The event RNG is seeded, so runs
+are repeatable — verified identical across runs, and divergent under a different seed.
 
-- an ideal colony meets the tier-6 requirements
-- a starter colony survives 400 days
-- the autopilot survives 3,000 days solvent
+Three scenarios, all passing:
 
-This is the tool whose absence caused the repeated regressions. It comes first.
+| Scenario | Result |
+|---|---|
+| Final charter is reachable | **Lunar Capital in 8 days** — pop 1,008, morale 89.6, health 100, nothing shed |
+| Starter colony survives 400 days | Survives on a ₵189,538 opening, ends solvent at ₵77,814 |
+| Autopilot survives 3,000 days | Survives; 6 shafts, avg commute 6.9, morale 72.6, zero deaths |
+
+Expectations are read from `LH.C`, `LH.MOD` and `LH.TIERS`, so a config change reshapes the tests
+rather than silently invalidating them. Checks can be marked *known debt* — reported truthfully but
+not failing the suite — so the harness never goes permanently red and gets ignored.
+
+**What it found within an hour of existing:**
+
+- A **performance pathology in the autopilot**: `reservedFree()` rescanned every instance for every
+  candidate column, on the order of 10⁸ operations a day in a mature colony. Now cached per step —
+  a 3,000-day run went from over two minutes to about six seconds, and the real game no longer
+  risks stalling at 8× speed.
+- Two of its own bugs, which is the point: a `Report` field named `note` shadowed the `note()` method
+  and threw inside a `setTimeout`, so the page hung on "running…" forever with no error. Both fixed;
+  scenario failures now surface instead of hanging.
+- Two known-debt items in the director, tracked for Phase 3: **7 distress sales** and **15 orphan
+  demolitions** across 3,000 days.
+
+Run it: open `tools/harness.html`, or append `?run` to run on load. Results also land on
+`window.HARNESS_RESULT` for automation.
 
 ### Phase 2 — Correctness debt
 
@@ -174,7 +219,8 @@ Cheap, and some of it quietly distorted the balance work.
 
 ### Phase 3 — Close the autopilot capacity gap (~190 → 220+)
 
-The spine, morale and shielding problems are fixed; what remains is capacity and late-game
+The harness reports the blockers directly: *Population 192 / 220; Rec Dome; Refinery*. The spine,
+morale and shielding problems are fixed; what remains is capacity and late-game
 stability. Diagnose with the Phase 1 harness rather than by eye: why housing stalls near 190, and
 what destabilises the colony after roughly 4,000 days. Also worth fixing: the director only builds a
 He-3 extractor when nearly broke (`js/autopilot.js:599`), so a healthy colony never touches the most
@@ -214,6 +260,65 @@ The trilogy is complete; resist a fourth game. Both local games independently im
 cycle, an autoplay agent, a speed dial, localStorage saves and a league table — factor those into a
 shared kit only if a third local game is genuinely wanted. Until then the duplication is cheaper
 than the abstraction.
+
+That verdict holds up under examination. The two league implementations are not the same thing in
+different clothes: mining rows are thirteen scalars scored by a three-line formula with a difficulty
+multiplier, habitat rows carry a thirteen-factor itemised breakdown with a penalty floor and outcome
+multipliers. The two autopilots share no surface at all — a priority ladder over a building grid
+versus a steering controller for a physics body. The genuine intersection across both games is about
+fifteen lines of "read a JSON array, push, sort, slice, write". Both leagues were also added in the
+*same* commit and have never been co-edited since, so the cost of the duplication has so far been
+realised exactly zero times, while consolidating would create a single failure mode across both
+games on a live site with no CI. The CSS is the one exception and it is worth doing: the palettes are
+already the same colours under different names (`--amber:#ffc857` against `--accent:#ffc861`, `--fg`
+against `--ink`, `--muted` against `--dim`), so unifying the tokens is mechanical and any mistake is
+visible at a glance.
+
+### Second track — the mining game
+
+The phases above are all Lunar Habitat, which is right: it is the game with an unfinished endgame.
+The mining game needs almost nothing by comparison, but it does need one thing, and it is the same
+thing Phase 1 is.
+
+Every bug ever found in it was found by running the simulation headlessly at speed and watching for
+things that stopped moving — the four agent-and-physics invariants in §3 above are all soak findings.
+That technique currently exists only as something done by hand, once. It should be a file:
+`tools/soak-mining.html`, loading the game with tripwires armed and running the autoplay agent to
+completion across all three difficulties, asserting no NaN anywhere, no living agent motionless while
+in a non-idle state, no AI state older than a threshold, and termination inside a step budget.
+
+Reproducibility is the prerequisite, not a feature. World generation is already deterministic, but
+about six simulation-relevant `Math.random()` sites remain — drone and crawler wobble, crawler
+placement, and the two stuck-breaker directions — so a soak failure reports "failed on run 7" with no
+way to replay run 7. A seeded generator on those sites, with cosmetic randomness (audio, particles)
+deliberately left on `Math.random()` so visual noise never consumes simulation entropy, closes it in
+an afternoon.
+
+Habitat needs no equivalent: `config.js`, `grid.js` and `sim.js` contain zero DOM references and zero
+`Math.random()` calls, so that simulation is already both headless-runnable and deterministic. The
+work there is to *verify* it — double-run the harness and diff — which then becomes a free
+regression test.
+
+### Mission Control
+
+`mission-control/` is a top-level entry point from the hub and is not covered above. It reads exactly
+one localStorage key, `bmg_league`, and everything else on the page — readiness bars, the downlink
+log, the site telemetry tables — is hand-written. The footer says so; the top of the page, with its
+live pulse and ground clock, implies otherwise.
+
+The theatre is the best thing about that page and should survive. The fix is provenance, not
+subtraction:
+
+- **Wire habitat's league in for real.** Same origin, same three lines already used for the mining
+  read, against `lunarhabitat.league.v1`. This closes the biggest gap on the page — the larger of the
+  two games currently contributes nothing to it.
+- **Badge blocks `LIVE` or `SPEC`.** "Ore grade 4.9%" is a measured design constant, not telemetry.
+  Labelling it converts an honesty problem into a design feature at near-zero cost.
+- **Say that the farm cannot report.** It is served from a different origin, so its localStorage is
+  unreachable by construction — no amount of work short of a backend changes that, and a hidden-iframe
+  bridge is not worth building. Badge it `OFF-SITE`, on the hub card too, which currently marks it
+  identically to the two local games while linking away from the site.
+- **Derive the sites-operational tile** from what actually reports rather than a hardcoded count.
 
 ---
 

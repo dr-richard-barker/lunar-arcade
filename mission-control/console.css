@@ -207,3 +207,20 @@ table.rec td.w{color:var(--green); font-weight:700}
 table.rec td.l{color:var(--red); font-weight:700}
 table.rec td.dt{color:#4d5f76}
 table.rec .ag{color:var(--cyan); font-weight:700}
+
+/* ---------------- provenance: what is live and what is a design spec ---------------- */
+.chip.live{
+  color:var(--green); border-color:rgba(95,212,138,.5);
+  background:rgba(95,212,138,.10); letter-spacing:.14em;
+}
+.chip.offsite{
+  color:var(--muted); border-color:var(--line2);
+  background:rgba(255,255,255,.02); letter-spacing:.12em; cursor:help;
+}
+.prov{
+  margin:0 0 9px; font-size:9.5px; letter-spacing:.2em; text-transform:uppercase;
+  display:inline-block; padding:4px 8px; border-radius:4px; border:1px solid;
+}
+.prov.live{color:var(--green); border-color:rgba(95,212,138,.32); background:rgba(95,212,138,.07)}
+.prov.spec{color:var(--muted); border-color:var(--line2); background:rgba(255,255,255,.02)}
+#habitat-record dl{margin-top:2px}
