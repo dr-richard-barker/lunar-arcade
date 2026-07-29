@@ -158,10 +158,10 @@
 
         var amen = LH.amenityAt(s, inst.x + inst.w / 2, inst.l);
         var commute = inst.dist <= C.COMMUTE_GOOD ? 0 :
-          Math.min(28, (inst.dist - C.COMMUTE_GOOD) / (C.COMMUTE_BAD - C.COMMUTE_GOOD) * 28);
+          Math.min(24, (inst.dist - C.COMMUTE_GOOD) / (C.COMMUTE_BAD - C.COMMUTE_GOOD) * 24);
         var rad = LH.shielded(s, inst) ? 0 : LH.radiationAt(inst.l) * 22;
         radSum += rad * seats;
-        moraleSum += (62 + Math.min(26, amen) - commute - rad - (inst.on ? 0 : 14)) * seats;
+        moraleSum += (62 + Math.min(32, amen) - commute - rad - (inst.on ? 0 : 14)) * seats;
         moraleWeight += seats;
       }
       if (m.tour && inst.on) tourCap += m.tour * (1 - inst.dmg);
@@ -174,9 +174,9 @@
     s.brownDays = darkHabs > 0 ? (s.brownDays || 0) + 1 : 0;
 
     var target = moraleWeight > 0 ? moraleSum / moraleWeight : 62;
-    if (crisis.length) target -= 30 * crisis.length;
+    if (crisis.length) target -= 22 * crisis.length;
     if (shed > 0) target -= Math.min(16, shed * 2.5);
-    if (s.health < 80) target -= (80 - s.health) * 0.4;
+    if (s.health < 80) target -= Math.min(18, (80 - s.health) * 0.28);
     if (pop >= 20 && jobs > 0 && workforce > jobs * 1.6)
       target -= Math.min(10, (workforce / jobs - 1.6) * 8);       // unemployment
     target = Math.max(0, Math.min(100, target));
@@ -229,7 +229,11 @@
     // health drifts back up when there's medical cover
     var medCover = 0;
     for (i = 0; i < on.length; i++) if (LH.MOD[on[i].mid].health) medCover++;
-    s.health = Math.min(100, s.health + (medCover > 0 ? 1.6 : 0.4));
+    /* Recovery has to outpace misfortune. At +1.6/day against -6 per
+       life-support crisis and -20 per solar flare, a single bad month left a
+       permanent ~30 morale penalty that no amount of good play could lift —
+       which is what turned every setback into a death spiral. */
+    s.health = Math.min(100, s.health + (medCover > 0 ? 2.2 + medCover * 0.6 : 0.8));
 
     /* ---- 7. money ------------------------------------------------------ */
     var income = 0, upkeep = 0;

@@ -51,6 +51,18 @@ formula inverted: the surface is the most dangerous floor in the building.
   (×1.5 for Lunar Capital, ×0.4 for a collapse). Runs are badged MANUAL, AUTO
   or SANDBOX; sandbox runs are filed unranked.
 
+### Balance notes
+
+The colony economy was retuned in July 2026 after instrumenting a mature
+colony and finding morale — not money — was the real ceiling. Amenities now
+reach roughly half again as far and a level counts double rather than triple
+toward that distance, so a deep colony can actually be covered; commuting is
+tolerated to 24 steps before morale suffers and transit shafts cost a third
+less, so a dense spine is affordable; and crew health recovers fast enough
+that one bad month is a setback rather than a death sentence. A well-built
+colony now sustains **morale in the low 70s** — clearing the Lunar Capital
+charter — against a hard ceiling of about 44 before.
+
 Saves live in the browser's localStorage (autosave every 90 seconds).
 
 Code layout: `js/config.js` (all tuning constants and the module catalogue),

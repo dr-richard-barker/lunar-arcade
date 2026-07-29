@@ -59,6 +59,24 @@
       // space exists but the treasury can't cover it: save, don't improvise
       if (chk.ok || (chk.reason && chk.reason.indexOf('Not enough credits') === 0)) broke = true;
     }
+
+    /* Row ends only works until the rows reach the edge of the survey area.
+       After that a colony can be three levels deep with a hundred usable
+       interior gaps and still refuse to grow, which is exactly what capped it
+       at 210 people. Fall back to any gap that touches existing structure —
+       the adjacency test is what stops it stranding modules. */
+    for (var gx = 2; gx + m.w <= C.GRID_W - 2; gx++) {
+      if (LH.occupied(s, gx, l)) continue;
+      if (!LH.occupied(s, gx - 1, l) && !LH.occupied(s, gx + m.w, l)) continue;
+      var gchk = LH.checkPlace(s, mid, gx, l, l);
+      if (!gchk.ok) {
+        if (gchk.reason && gchk.reason.indexOf('Not enough credits') === 0) broke = true;
+        continue;
+      }
+      if (!afford(s, gchk.cost, floor)) { broke = true; continue; }
+      var gr = LH.place(s, mid, gx, l, l);
+      if (gr.ok) return gr;
+    }
     return broke ? 'broke' : null;
   }
 
@@ -176,6 +194,52 @@
     if (count(s, 'rtg') === 0)
       return act(s, 'buried an RTG cluster', growOnLevel(s, 'rtg', 0, 4000));
 
+    /* 2.9 - the finish line. Once population and morale already satisfy the
+       next charter tier and only buildings are missing, stop pouring every
+       credit into more housing and actually buy the things the charter asks
+       for — otherwise the colony grows forever one requirement short. */
+    /* Only active load shedding is a real emergency. Demanding a perfectly
+       serene colony meant the saving window never opened, because a colony
+       this size always has some balance wobbling near zero. */
+    var stable = (st.shed || 0) === 0 && s.credits > -2000;
+    var progNow = LH.tierProgress(s);
+    if (progNow && stable) {
+      var missing = progNow.items.filter(function (it) { return !it.ok; });
+      var onlyBuildings = missing.length > 0 && missing.every(function (it) {
+        return /^(Population|Morale)/.test(it.label) === false;
+      });
+      if (onlyBuildings) {
+        for (var fi = 0; fi < missing.length; fi++) {
+          for (var fm in LH.MOD) {
+            if (LH.MOD[fm].name !== missing[fi].label || count(s, fm) > 0) continue;
+            var fd = LH.MOD[fm], rF = null;
+            if (fd.where === 'above') rF = buildTower(s, fm, 4000);
+            else if (fd.where === 'surface' || fd.where === 'aboveOr0') {
+              rF = growOnLevel(s, fm, 0, 4000);
+              if (rF === null) rF = makeRoom(s, fm, [0], 4000);
+            } else if (fd.maxL !== undefined && fd.maxL < -1) {
+              rF = deepBuild(s, fm, 4000);
+              if (rF === null || rF === 'broke') {
+                var dLv = [];
+                for (var dz = fd.maxL; dz >= (s.autoShaftBot || -8); dz--) dLv.push(dz);
+                rF = makeRoom(s, fm, dLv, 4000);
+              }
+            } else {
+              rF = growAny(s, fm, subs, 4000);
+              if (rF === null) rF = makeRoom(s, fm, subs, 4000);
+            }
+            if (rF && rF !== 'broke' && !rF.redirected) {
+              return act(s, 'built ' + fd.name + ' to complete the charter', rF);
+            }
+            /* There is room but not yet the money: stop shopping for the day
+               so the surplus actually accumulates. At a healthy margin the
+               charter is a fortnight of saving, not an impossibility. */
+            if (rF === 'broke') return false;
+          }
+        }
+      }
+    }
+
     /* -- shared bookkeeping ------------------------------------------- */
     var gen = 0, demand = (st.powerUse || 0);
     var dustTotal = 0, solarN = 0;
@@ -190,20 +254,27 @@
 
     /* 3 - POWER before everything else: a browned-out colony earns nothing.
        Power builds may spend almost to the floor - they are survival. */
-    if ((st.shed || 0) > 0 || headroom < 12)
-      return act(s, 'raised another solar array', growOnLevel(s, 'solar', 0, 3000));
-    if ((st.powerCap || 0) < (demand + 8) * (C.LUNAR_CYCLE / 2) * 0.9)
-      return act(s, 'banked more batteries for the long night', growOnLevel(s, 'battery', 0, 3000));
-    if (solarN > 0 && dustTotal / solarN > 0.2 && count(s, 'maint') < Math.ceil(solarN / 4))
-      return act(s, 'added a maintenance bay to keep the arrays clean', growOnLevel(s, 'maint', 0, 4000));
+    if ((st.shed || 0) > 0 || headroom < 12) {
+      if (act(s, 'raised another solar array', growOnLevel(s, 'solar', 0, 3000))) return true;
+    }
+    if ((st.powerCap || 0) < (demand + 8) * (C.LUNAR_CYCLE / 2) * 0.9) {
+      var rBat = growOnLevel(s, 'battery', 0, 3000);
+      if (rBat === null) rBat = growAny(s, 'battery', subs, 3000);   // batteries fit anywhere
+      if (act(s, 'banked more batteries for the long night', rBat)) return true;
+    }
+    if (solarN > 0 && dustTotal / solarN > 0.2 && count(s, 'maint') < Math.ceil(solarN / 4)) {
+      var rMb = growOnLevel(s, 'maint', 0, 4000);
+      if (rMb === null) rMb = growAny(s, 'maint', subs, 4000);
+      if (act(s, 'added a maintenance bay to keep the arrays clean', rMb)) return true;
+    }
 
     /* 4 - life support: real daily balances first (they include staffing) */
     if ((st.o2Bal || 0) < 1.5)
-      return act(s, 'expanded oxygen production', growAny(s, 'scrubber', subs, 3000));
+      { if (act(s, 'expanded oxygen production', growAny(s, 'scrubber', subs, 3000))) return true; }
     if ((st.waterBal || 0) < 1.5)
-      return act(s, 'expanded water recycling', growAny(s, 'recycler', subs, 3000));
+      { if (act(s, 'expanded water recycling', growAny(s, 'recycler', subs, 3000))) return true; }
     if ((st.foodBal || 0) < 1.5)
-      return act(s, 'expanded hydroponics', growAny(s, 'hydro', subs, 3000));
+      { if (act(s, 'expanded hydroponics', growAny(s, 'hydro', subs, 3000))) return true; }
     /* then theoretical headroom for the next wave of arrivals */
     var need = s.pop + 6;
     var o2Net = 0, h2oNet = 0, foodNet = 0;
@@ -215,16 +286,16 @@
       if (mm.food > 0) foodNet += mm.food;
     }
     if (o2Net < need * C.O2_PER_POP)
-      return act(s, 'expanded oxygen production', growAny(s, 'scrubber', subs, 3000));
+      { if (act(s, 'expanded oxygen production', growAny(s, 'scrubber', subs, 3000))) return true; }
     if (h2oNet < need * C.WATER_PER_POP) {
       if (s.tier >= 2 && (s.autoShaftBot || 0) <= -10 && count(s, 'icemine') === 0) {
         var rIce = growAny(s, 'icemine', [-10, -11, -12].filter(function (l) { return subs.indexOf(l) >= 0; }));
         if (rIce) return act(s, 'tapped buried ice', rIce);
       }
-      return act(s, 'expanded water recycling', growAny(s, 'recycler', subs, 3000));
+      { if (act(s, 'expanded water recycling', growAny(s, 'recycler', subs, 3000))) return true; }
     }
     if (foodNet < need * C.FOOD_PER_POP)
-      return act(s, 'expanded hydroponics', growAny(s, 'hydro', subs, 3000));
+      { if (act(s, 'expanded hydroponics', growAny(s, 'hydro', subs, 3000))) return true; }
 
     /* 5 - grow the settlement: housing fills itself, people pay rent.
        Housing is the engine of the whole economy - build it eagerly. */

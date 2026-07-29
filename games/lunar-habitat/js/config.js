@@ -28,8 +28,8 @@ LH.C = {
   HE3_PRICE: 1500,
 
   // a module more than this many transit-steps from an airlock is "remote"
-  COMMUTE_GOOD: 18,
-  COMMUTE_BAD: 55
+  COMMUTE_GOOD: 24,
+  COMMUTE_BAD: 68
 };
 
 /* Radiation exposure by level. Deep = safe, surface = bad, high tower = worst.
@@ -77,11 +77,11 @@ LH.MODULES = [
     where: 'any', tier: 1, vertical: true, span: 6, speed: 2.4, color: '#6f7b88',
     desc: 'Cheap vertical link, max 6 levels. Slow — colonists hate long climbs.' },
 
-  { id: 'lift', name: 'Transit Shaft', cat: 'infra', w: 1, cost: 1400, up: 3,
+  { id: 'lift', name: 'Transit Shaft', cat: 'infra', w: 1, cost: 950, up: 2,
     where: 'any', vertical: true, span: 20, speed: 1, tier: 1, color: '#9aa7b5',
     desc: 'Standard pressurised lift. Drag vertically to size the shaft.' },
 
-  { id: 'express', name: 'Mag-Lift Shaft', cat: 'infra', w: 1, cost: 4600, up: 14,
+  { id: 'express', name: 'Mag-Lift Shaft', cat: 'infra', w: 1, cost: 3200, up: 9,
     where: 'any', vertical: true, span: 40, speed: 0.35, tier: 3, color: '#cfd9e6',
     desc: 'High-speed shaft. Three times the reach of a transit shaft — the backbone of any deep colony.' },
 
@@ -110,8 +110,8 @@ LH.MODULES = [
     where: 'any', power: 14, tier: 1, color: '#d4762f',
     desc: 'Small, expensive, and utterly indifferent to the sun. Keeps life support alive through a blackout.' },
 
-  { id: 'fission', name: 'Fission Plant', cat: 'power', w: 6, cost: 95000, up: 520,
-    where: 'below', maxL: -6, power: 270, jobs: 6, tier: 3, color: '#f0d060',
+  { id: 'fission', name: 'Fission Plant', cat: 'power', w: 6, cost: 95000, up: 410,
+    where: 'below', maxL: -6, power: 300, jobs: 6, tier: 3, color: '#f0d060',
     desc: 'Buried deep for shielding. The only honest answer to the lunar night.' },
 
   // ---------------------------------------------------------------- life
@@ -157,7 +157,7 @@ LH.MODULES = [
     where: 'any', jobs: 6, ore_in: 5, income: 390, power: -16, tier: 2, color: '#b3603f',
     desc: 'Turns raw ore into parts and spares. Needs a mine feeding it.' },
 
-  { id: 'refinery', name: 'Refinery', cat: 'work', w: 8, cost: 47000, up: 260,
+  { id: 'refinery', name: 'Refinery', cat: 'work', w: 8, cost: 47000, up: 205,
     where: 'any', jobs: 10, ore_in: 14, income: 1150, power: -34, tier: 3, color: '#9e5334',
     desc: 'Bulk metals for export. The backbone of a real industrial base.' },
 
@@ -183,40 +183,40 @@ LH.MODULES = [
     desc: 'An industrial bore into the deep crust. Eighteen levels down, and worth every credit.' },
 
   // ---------------------------------------------------------------- amenities
-  { id: 'mess', name: 'Mess Hall', cat: 'amen', w: 5, cost: 14000, up: 70,
-    where: 'any', jobs: 4, income: 150, power: -8, amen: { r: 13, v: 8 }, tier: 1, color: '#b07fd0',
+  { id: 'mess', name: 'Mess Hall', cat: 'amen', w: 5, cost: 14000, up: 46,
+    where: 'any', jobs: 4, income: 150, power: -8, amen: { r: 19, v: 9 }, tier: 1, color: '#b07fd0',
     desc: 'Hot food and somewhere to sit. The cheapest morale you can buy.' },
 
-  { id: 'med', name: 'Medical Bay', cat: 'amen', w: 4, cost: 20000, up: 140,
-    where: 'any', jobs: 5, power: -10, amen: { r: 22, v: 7 }, health: true, tier: 1, color: '#d47fa0',
+  { id: 'med', name: 'Medical Bay', cat: 'amen', w: 4, cost: 20000, up: 92,
+    where: 'any', jobs: 5, power: -10, amen: { r: 30, v: 8 }, health: true, tier: 1, color: '#d47fa0',
     desc: 'Treats radiation exposure and accidents. Casualties are far worse without one in range.' },
 
-  { id: 'gym', name: 'Exercise Deck', cat: 'amen', w: 4, cost: 12000, up: 55,
-    where: 'any', jobs: 2, power: -6, amen: { r: 15, v: 6 }, tier: 1, color: '#9f6fc0',
+  { id: 'gym', name: 'Exercise Deck', cat: 'amen', w: 4, cost: 12000, up: 36,
+    where: 'any', jobs: 2, power: -6, amen: { r: 21, v: 7 }, tier: 1, color: '#9f6fc0',
     desc: 'Two hours a day of resistance training, or their bones dissolve.' },
 
-  { id: 'school', name: 'School', cat: 'amen', w: 5, cost: 17000, up: 100,
-    where: 'any', jobs: 4, power: -8, amen: { r: 17, v: 9 }, tier: 3, color: '#c08fd8',
+  { id: 'school', name: 'School', cat: 'amen', w: 5, cost: 17000, up: 66,
+    where: 'any', jobs: 4, power: -8, amen: { r: 25, v: 10 }, tier: 3, color: '#c08fd8',
     desc: 'The moment children arrive, a base becomes a settlement.' },
 
-  { id: 'rec', name: 'Rec Dome', cat: 'amen', w: 7, cost: 33000, up: 190,
-    where: 'any', jobs: 4, income: 240, power: -14, amen: { r: 20, v: 12 }, draw: 3, tier: 3, color: '#9d5fc9',
+  { id: 'rec', name: 'Rec Dome', cat: 'amen', w: 7, cost: 33000, up: 126,
+    where: 'any', jobs: 4, income: 240, power: -14, amen: { r: 29, v: 14 }, draw: 3, tier: 3, color: '#9d5fc9',
     desc: 'Bars, courts, low-gravity sport. Draws tourists as well as lifting morale.' },
 
-  { id: 'obs', name: 'Observatory', cat: 'amen', w: 6, cost: 42000, up: 220,
-    where: 'above', minL: 3, jobs: 4, income: 520, power: -12, amen: { r: 16, v: 8 }, draw: 6, tier: 3, color: '#8f7fe0',
+  { id: 'obs', name: 'Observatory', cat: 'amen', w: 6, cost: 42000, up: 148,
+    where: 'above', minL: 3, jobs: 4, income: 520, power: -12, amen: { r: 23, v: 9 }, draw: 6, tier: 3, color: '#8f7fe0',
     desc: 'Earthrise, and no atmosphere in the way. Must sit three levels above the surface.' },
 
-  { id: 'garden', name: 'Garden Dome', cat: 'amen', w: 9, cost: 48000, up: 280,
-    where: 'above', o2: 16, jobs: 3, power: -16, water: -10, amen: { r: 28, v: 18 }, draw: 8, tier: 4, color: '#63c98b',
+  { id: 'garden', name: 'Garden Dome', cat: 'amen', w: 9, cost: 48000, up: 186,
+    where: 'above', o2: 16, jobs: 3, power: -16, water: -10, amen: { r: 40, v: 20 }, draw: 8, tier: 4, color: '#63c98b',
     desc: 'Trees under glass. The one thing every colonist says they miss.' },
 
-  { id: 'security', name: 'Security Post', cat: 'amen', w: 3, cost: 10000, up: 80,
-    where: 'any', jobs: 3, power: -5, amen: { r: 24, v: 2 }, guard: true, tier: 2, color: '#8090a8',
+  { id: 'security', name: 'Security Post', cat: 'amen', w: 3, cost: 10000, up: 54,
+    where: 'any', jobs: 3, power: -5, amen: { r: 32, v: 3 }, guard: true, tier: 2, color: '#8090a8',
     desc: 'Cuts damage from breaches and quakes within its patrol radius.' },
 
-  { id: 'maint', name: 'Maintenance Bay', cat: 'amen', w: 4, cost: 12000, up: 70,
-    where: 'any', jobs: 3, power: -6, repair: true, amen: { r: 30, v: 1 }, tier: 1, color: '#7f8f7a',
+  { id: 'maint', name: 'Maintenance Bay', cat: 'amen', w: 4, cost: 12000, up: 52,
+    where: 'any', jobs: 3, power: -6, repair: true, amen: { r: 42, v: 2 }, tier: 1, color: '#7f8f7a',
     desc: 'Repairs damaged modules and scrubs dust off solar arrays. Build one early.' }
 ];
 

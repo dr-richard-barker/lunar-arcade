@@ -262,7 +262,10 @@
     var v = 0, i, list = s.amenList || [];
     for (i = 0; i < list.length; i++) {
       var a = list[i], m = LH.MOD[a.mid];
-      var dx = Math.abs(a.x + a.w / 2 - x), dl = Math.abs(a.l - l) * 3;
+      /* A level up or down is a lift ride, not a hike. Weighting it triple
+         meant a mess hall reached barely four levels, so most of a deep
+         colony had no amenity coverage at all. */
+      var dx = Math.abs(a.x + a.w / 2 - x), dl = Math.abs(a.l - l) * 2;
       var d = dx + dl;
       if (d <= m.amen.r) v += m.amen.v * (1 - d / m.amen.r) * (1 - a.dmg);
     }
