@@ -525,7 +525,75 @@
     return r;
   };
 
-  H.order = ['reachable', 'starter', 'autopilot'];
+  /* SCENARIO 4 — persistence. Six state fields were missing from the save, and
+     the most serious consequence was not cosmetic: with the event RNG unsaved,
+     reloading replayed an identical solar-flare sequence, so a reload was a
+     working save-scum exploit. The decisive assertion here is that continuing a
+     run and continuing a *reloaded* run produce byte-identical futures. */
+  H.scenarios.saveload = function () {
+    var r = new Report('Save/load round-trip preserves the run',
+      'Pure serializeState/deserializeState — no localStorage, no canvas');
+
+    var s = fresh();
+    s.auto = true;
+    run(s, 240, { auto: true });          // long enough for history, alerts and events
+
+    r.metric('day at save', s.day);
+    r.metric('population', Math.round(s.pop));
+    r.metric('history points', s.history.length);
+    r.metric('log entries', s.log.length);
+
+    var blob = JSON.stringify(LH.serializeState(s));
+    r.metric('save size', fmt(Math.round(blob.length / 1024)) + ' kB');
+
+    var back = LH.deserializeState(JSON.parse(blob));
+
+    // the fields that were being lost
+    r.check('history preserved', back.history.length === s.history.length && s.history.length > 0,
+      back.history.length + ' of ' + s.history.length, 'all, and non-empty');
+    r.check('event RNG seed preserved', back.rseed === s.rseed && s.rseed !== 12345,
+      String(back.rseed), 'equal, and advanced past the initial seed');
+    r.check('stats preserved', Math.round(back.stats.upkeep) === Math.round(s.stats.upkeep) &&
+      Math.round(back.stats.powerCap) === Math.round(s.stats.powerCap),
+      'upkeep ' + fmt(back.stats.upkeep) + ', powerCap ' + fmt(back.stats.powerCap), 'equal');
+    r.check('brownout clock preserved', (back.brownDays || 0) === (s.brownDays || 0),
+      back.brownDays || 0, s.brownDays || 0);
+    r.check('collapse clock preserved', (back.zeroDays || 0) === (s.zeroDays || 0),
+      back.zeroDays || 0, s.zeroDays || 0);
+    r.check('one-shot alert latches preserved',
+      JSON.stringify(back.alerts) === JSON.stringify(s.alerts),
+      JSON.stringify(back.alerts), 'equal');
+    r.check('log not truncated', back.log.length === s.log.length,
+      back.log.length + ' of ' + s.log.length, 'all');
+    r.check('colony intact', Object.keys(back.inst).length === Object.keys(s.inst).length &&
+      (back.stats.orphans || 0) === 0,
+      Object.keys(back.inst).length + ' modules, ' + (back.stats.orphans || 0) + ' orphaned',
+      'same count, none orphaned');
+
+    /* The exploit test: the future must not change just because you reloaded. */
+    function future(st, days) {
+      for (var d = 0; d < days; d++) { LH.tick(st); LH.autopilot(st); LH.checkEnd(st); if (st.ended) break; }
+      return [st.day, Math.round(st.pop), Math.round(st.credits), st.tier, st.deaths,
+              st.flare, +st.morale.toFixed(3), st.log.length].join('|');
+    }
+    var liveFuture = future(s, 120);
+    var reloadedFuture = future(back, 120);
+    r.check('reloading does not change the future', liveFuture === reloadedFuture,
+      reloadedFuture === liveFuture ? 'identical' : reloadedFuture + ' vs ' + liveFuture,
+      'identical');
+
+    /* And a finished run must be recognisable as finished after a reload. */
+    var done = fresh();
+    done.peakPop = 40; done.pop = 0;
+    for (var z = 0; z < 14; z++) LH.checkEnd(done);
+    var doneBack = LH.deserializeState(JSON.parse(JSON.stringify(LH.serializeState(done))));
+    r.check('a finished run reloads as finished', doneBack.ended === done.ended && !!done.ended,
+      doneBack.ended || 'not ended', done.ended || '(expected an outcome)');
+
+    return r;
+  };
+
+  H.order = ['reachable', 'starter', 'autopilot', 'saveload'];
 
   H.runAll = function (onProgress) {
     var results = [];

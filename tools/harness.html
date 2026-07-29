@@ -79,6 +79,7 @@
     <button id="run1">Reachability only</button>
     <button id="run2">Starter only</button>
     <button id="run3">Autopilot only</button>
+    <button id="run4">Save/load only</button>
     <span id="status">idle</span>
   </div>
 
@@ -95,6 +96,7 @@
 <script src="../games/lunar-habitat/js/config.js"></script>
 <script src="../games/lunar-habitat/js/grid.js"></script>
 <script src="../games/lunar-habitat/js/sim.js"></script>
+<script src="../games/lunar-habitat/js/save.js"></script>
 <script src="../games/lunar-habitat/js/autopilot.js"></script>
 <script src="../games/lunar-habitat/js/league.js"></script>
 <script src="harness.js"></script>
@@ -194,6 +196,7 @@
   document.getElementById('run1').onclick = function () { go(['reachable']); };
   document.getElementById('run2').onclick = function () { go(['starter']); };
   document.getElementById('run3').onclick = function () { go(['autopilot']); };
+  document.getElementById('run4').onclick = function () { go(['saveload']); };
 
   if (/[?&]run\b/.test(location.search)) go();
 })();

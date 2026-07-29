@@ -5,7 +5,6 @@
 
   var C = LH.C, R = LH.R, ui = LH.ui;
   var cv, ctx, last = 0, acc = 0, lastLogLen = 0;
-  var SAVE_KEY = 'lunarhabitat.save.v1';
 
   /* ------------------------------------------------------------- canvas */
 
@@ -193,6 +192,12 @@
         LH.refreshPanel(s);
         LH.buildPaletteIfTier(s);
         drainLog(s);
+        /* A charter promotion is the game's main reward moment; sim.js has always
+           recorded it here and nothing ever read it. */
+        if (s.tierJustUp) {
+          LH.showCharterBanner(s.tierJustUp, s.tier);
+          s.tierJustUp = null;
+        }
       }
     }
 
@@ -218,46 +223,7 @@
   }
 
   /* ---------------------------------------------------------- save/load */
-
-  LH.saveGame = function () {
-    try {
-      var s = LH.S;
-      localStorage.setItem(SAVE_KEY, JSON.stringify({
-        credits: s.credits, day: s.day, cells: s.cells, inst: s.inst, dug: s.dug,
-        nextId: s.nextId, res: s.res, pop: s.pop, tourists: s.tourists,
-        morale: s.morale, health: s.health, tier: s.tier, log: s.log.slice(0, 40),
-        deaths: s.deaths, flare: s.flare, auto: s.auto, sandbox: s.sandbox,
-        autoEverUsed: s.autoEverUsed, sandboxEverUsed: s.sandboxEverUsed,
-        peakPop: s.peakPop, totalExports: s.totalExports, totalIncome: s.totalIncome,
-        crisisDays: s.crisisDays, ended: s.ended,
-        autoShaftX: s.autoShaftX, autoShaftBot: s.autoShaftBot
-      }));
-      LH.toast('Colony saved to this browser.', 'good');
-    } catch (err) {
-      LH.toast('Could not save: ' + err.message, 'bad');
-    }
-  };
-
-  LH.hasSave = function () { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } };
-
-  LH.loadGame = function () {
-    try {
-      var raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return false;
-      var d = JSON.parse(raw), s = LH.newState();
-      Object.keys(d).forEach(function (k) { s[k] = d[k]; });
-      // rebuild anything derived
-      Object.keys(s.inst).forEach(function (k) {
-        var i = s.inst[k];
-        if (i.seed === undefined) i.seed = Math.random();
-        i.dist = Infinity;
-      });
-      LH.S = s;
-      LH.solveTransit(s); LH.solveAmenity(s);
-      lastTier = s.tier; lastLogLen = s.log.length;
-      return true;
-    } catch (e) { return false; }
-  };
+  /* Lives in js/save.js so it can be unit-tested without a canvas. */
 
   LH.confirmNew = function (skipConfirm) {
     if (!skipConfirm &&
@@ -288,6 +254,8 @@
       LH.toast('Colony restored — day ' + LH.S.day + '.', 'good');
     }
     R.clampCam(cv);
+    lastTier = LH.S.tier;
+    lastLogLen = LH.S.log.length;
     LH.buildPalette(LH.S);
     LH.refreshTop(LH.S);
     LH.refreshPanel(LH.S);
@@ -299,6 +267,15 @@
     var sb = document.getElementById('btn-sandbox');
     if (sb) sb.classList.toggle('on', !!LH.S.sandbox);
     LH.setHint(null);
+
+    /* checkEnd early-returns on s.ended, so a finished run used to resume at 1x
+       with no end screen and no way to score it — present its outcome instead.
+       Must come after the setSpeed(1) above, which would otherwise restart the
+       clock on a colony that is already over. */
+    if (loaded && LH.S.ended && LH.S.ended !== 'continued') {
+      setSpeed(0);
+      LH.showEndScreen(LH.S, LH.S.ended);
+    }
   }
 
   window.addEventListener('DOMContentLoaded', function () {
@@ -315,7 +292,11 @@
     document.getElementById('btn-start').onclick = function () { start(false); };
 
     // autosave every 90 seconds
-    setInterval(function () { if (LH.S && LH.S.day > 1) LH.saveGame(); }, 90000);
+    // quiet, and not once the run is over — this used to toast "Colony saved"
+    // every 90 seconds forever, including after a collapse
+    setInterval(function () {
+      if (LH.S && LH.S.day > 1 && !LH.S.ended) LH.saveGame(true);
+    }, 90000);
 
     requestAnimationFrame(function (t) { last = t; requestAnimationFrame(frame); });
   });

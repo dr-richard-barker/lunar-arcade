@@ -196,26 +196,38 @@ not failing the suite — so the harness never goes permanently red and gets ign
 Run it: open `tools/harness.html`, or append `?run` to run on load. Results also land on
 `window.HARNESS_RESULT` for automation.
 
-### Phase 2 — Correctness debt
+### Phase 2 — Correctness debt ✅ done
 
-Cheap, and some of it quietly distorted the balance work.
+- **Amenity ordering.** `LH.solveAmenity` ran at the *end* of `LH.tick` while `LH.amenityAt` was
+  consumed earlier in the same tick, so every morale figure was computed against the previous day's
+  coverage — and on the first tick `s.amenList` was undefined, so coverage read zero. Solving now
+  happens after load shedding is settled and before morale reads it. Verified: first-tick coverage
+  went from 0 to a real value.
+- **Save/load integrity.** Persistence moved out of `main.js` into `js/save.js`, split into a pure
+  `serializeState` / `deserializeState` pair plus thin localStorage wrappers — so the harness can
+  test it without a canvas. Six missing fields added: `rseed`, `history`, `brownDays`, `zeroDays`,
+  `stats`, `alerts`; the log is no longer truncated from 120 entries to 40.
+- **Reloading is no longer a save-scum exploit.** With `rseed` unsaved, the event RNG restarted from
+  a hardcoded seed and replayed an identical solar-flare sequence. Scenario 4 now asserts that
+  continuing a run and continuing a *reloaded* run produce byte-identical futures.
+- **A finished run no longer reloads as an un-endable zombie.** It presents its end screen, paused,
+  with the option to file the score.
+- **Autosave is quiet**, and stops once the run is over. It used to announce "Colony saved" every 90
+  seconds forever, including after a collapse.
+- **`s.tierJustUp` is finally read.** A charter promotion now shows a banner naming the tier and the
+  modules it unlocked — and says so plainly when it unlocks nothing, which at tier 6 it does.
 
-- **Amenity ordering bug.** `LH.solveAmenity` runs at the *end* of `LH.tick` (`js/sim.js:288`) while
-  `LH.amenityAt` is consumed earlier in the same tick (`js/sim.js:159`). Morale is therefore always
-  computed against the previous day's amenity list, and on the first tick `s.amenList` is undefined
-  so coverage reads zero.
-- **Save/load integrity.** `s.history`, `s.rseed`, `s.brownDays`, `s.zeroDays`, `s.stats` and
-  `s.alerts` are not persisted (`js/main.js:222-239`). Consequences: sparklines reset on reload;
-  `assess()` reads an empty history and so unconditionally awards "+15, population trending up" even
-  for a colony in freefall (`js/report.js:73-78`); reloading resets the three-day unpowered death
-  clock and the twelve-day collapse countdown; and because `rseed` restarts at a hardcoded `12345`,
-  reloading replays an identical solar-flare sequence — a working save-scum exploit.
-- **A finished run reloads as an un-endable zombie.** `ended` is saved and `checkEnd` early-returns
-  on it (`js/league.js:116`), so a bankrupt or collapsed save resumes at 1× with no end screen and
-  no scoring.
-- **Autosave announces itself every 90 seconds, forever** (`js/main.js:235`, `:318`).
-- **`s.tierJustUp` is set and never read** (`js/sim.js:399`). A charter promotion — the game's main
-  reward moment — produces only a line in the log. Wiring this up is the cheapest available win.
+**What Phase 2 turned up.** The amenity fix raised morale, which accelerated immigration, which the
+director could not keep pace with — it went bankrupt at day 2578 where it had previously survived
+3,000 days. The harness caught this immediately, and an A/B against the old ordering confirmed the
+cause. The director had been sizing power for the population it *had* rather than the berths it had
+already built, so it was permanently one wave of arrivals behind; the symptom was a 35-module
+brownout every lunar night. Sizing against `max(pop, housing)` fixed it — and the director now
+reaches **tier 4 (Colony) at population 246**, up from tier 3 at 192. A correctness fix in the
+simulation moved the AI a whole charter tier.
+
+Scenario 4 (save/load) was added to the harness and passes. Distress sales rose from 7 to 22 per
+3,000 days and remain tracked as known debt for Phase 3.
 
 ### Phase 3 — Close the autopilot capacity gap (~190 → 220+)
 

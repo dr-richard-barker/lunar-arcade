@@ -283,6 +283,34 @@
       'Sandbox closed. Costs and charter locks are back in force.', s.sandbox ? 'good' : 'warn');
   };
 
+  /* A charter promotion is the game's main reward moment. sim.js has always
+     recorded it in s.tierJustUp and nothing ever read it, so a promotion showed
+     up only as a line in the log. Name the tier and say what it unlocked —
+     including, honestly, when it unlocks nothing. */
+  LH.showCharterBanner = function (name, tier) {
+    var unlocked = LH.MODULES.filter(function (m) { return m.tier === tier; });
+    var list = unlocked.length
+      ? unlocked.map(function (m) {
+          return '<span class="cb-mod" style="color:' + m.color + ';border-color:' +
+                 m.color + '55">' + m.name + '</span>';
+        }).join('')
+      : '<span class="cb-none">No new modules at this tier</span>';
+
+    var el = document.createElement('div');
+    el.className = 'charter-pop';
+    el.innerHTML =
+      '<div class="cb-kicker">CHARTER UPGRADED · TIER ' + tier + ' OF ' + LH.TIERS.length + '</div>' +
+      '<div class="cb-name">' + name.toUpperCase() + '</div>' +
+      '<div class="cb-sub">' + (unlocked.length ? 'Now available' : 'Charter advanced') + '</div>' +
+      '<div class="cb-mods">' + list + '</div>';
+    document.body.appendChild(el);
+
+    setTimeout(function () {
+      el.classList.add('out');
+      setTimeout(function () { el.remove(); }, 600);
+    }, 5200);
+  };
+
   LH.bulldozeSelected = function () {
     if (!ui.sel) return;
     var r = LH.remove(LH.S, ui.sel);

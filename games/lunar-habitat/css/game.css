@@ -435,3 +435,31 @@ button.act.danger:hover { border-color: var(--bad); color: var(--bad); }
   .lg-table th:nth-child(8), .lg-table td:nth-child(8),
   .lg-table th:nth-child(11), .lg-table td:nth-child(11) { display: none; }
 }
+
+/* ------------------------------------------------------ charter promotion */
+.charter-pop {
+  position: fixed; left: 50%; top: 16%; transform: translate(-50%, 0);
+  z-index: 40; pointer-events: none; text-align: center;
+  background: linear-gradient(180deg, rgba(20,28,44,.97), rgba(12,17,28,.97));
+  border: 1px solid var(--accent); border-radius: 4px;
+  padding: 18px 30px 16px; min-width: 300px; max-width: 74vw;
+  box-shadow: 0 0 50px rgba(255,200,97,.22), inset 0 1px 0 rgba(255,255,255,.08);
+  animation: cbIn .5s cubic-bezier(.2,.9,.3,1);
+}
+.charter-pop.out { animation: cbOut .6s ease-in forwards; }
+@keyframes cbIn {
+  from { opacity: 0; transform: translate(-50%, -14px) scale(.96); filter: brightness(2); }
+}
+@keyframes cbOut { to { opacity: 0; transform: translate(-50%, -10px); } }
+.charter-pop .cb-kicker { font-size: 9px; letter-spacing: .22em; color: var(--accent-2); }
+.charter-pop .cb-name {
+  font-size: 24px; font-weight: 700; letter-spacing: .07em; color: var(--accent);
+  margin: 6px 0 2px; text-shadow: 0 0 24px rgba(255,200,97,.45);
+}
+.charter-pop .cb-sub { font-size: 9.5px; letter-spacing: .16em; color: var(--dim);
+  text-transform: uppercase; margin-bottom: 10px; }
+.charter-pop .cb-mods { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.charter-pop .cb-mod {
+  font-size: 10px; padding: 3px 8px; border: 1px solid; border-radius: 10px;
+}
+.charter-pop .cb-none { font-size: 10.5px; color: var(--dim); font-style: italic; }

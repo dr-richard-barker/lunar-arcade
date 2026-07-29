@@ -78,8 +78,8 @@ Code layout: `js/config.js` (all tuning constants and the module catalogue),
 `js/sim.js` (the daily tick), `js/render.js` (procedural canvas renderer with
 per-module animated interiors), `js/autopilot.js` (the colony director),
 `js/report.js` (Mission Control dashboard), `js/league.js` (end-of-run scoring
-and the league table), `js/ui.js` (DOM chrome),
-`js/main.js` (input + main loop).
+and the league table), `js/save.js` (pure serialize/deserialize plus localStorage
+wrappers), `js/ui.js` (DOM chrome), `js/main.js` (input + main loop).
 
 ### The Boring Mining Game (`games/boring-mining/`) — playable
 

@@ -139,6 +139,13 @@
     s.stats.he3Rate = he3;
     s.stats.industryRatio = industryRatio;
 
+    /* Amenity coverage must be solved BEFORE morale reads it. This ran at the
+       very end of the tick, so every morale figure was computed against the
+       previous day's coverage — and on the first tick s.amenList was undefined,
+       so coverage read zero. Shedding is settled by now, which is what
+       solveAmenity needs to know which amenities are actually running. */
+    LH.solveAmenity(s);
+
     /* ---- 5. housing, occupancy and morale ------------------------------ */
     var housing = 0, tourCap = 0, draw = 0, darkHabs = 0;
     var moraleSum = 0, moraleWeight = 0, radSum = 0;
@@ -285,7 +292,6 @@
     s.totalIncome = (s.totalIncome || 0) + income;
     if (crisis.length) s.crisisDays = (s.crisisDays || 0) + 1;
 
-    LH.solveAmenity(s);
     events(s, on);
     checkTier(s);
 

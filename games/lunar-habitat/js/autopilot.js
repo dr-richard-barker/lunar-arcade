@@ -338,7 +338,12 @@
         else steadyGen += out;
       } else if (pm.power < 0) demand -= pm.power;
     }
-    demand += s.pop * C.POWER_PER_POP + s.tourists * 0.15;
+    /* Size for the berths that exist, not the people already in them. Empty
+       berths fill fast, so chasing current population means the grid is always
+       one wave of arrivals behind — which showed up as a 35-module brownout
+       every lunar night once morale (and therefore immigration) improved. */
+    var soonPop = Math.max(s.pop, st.housing || 0);
+    demand += soonPop * C.POWER_PER_POP + s.tourists * 0.15;
     var headroom = gen - demand;                        // at full sun
     /* Generation must also bank enough surplus during the fourteen-day day to
        carry the fourteen-day night, which means covering roughly twice the
@@ -367,7 +372,7 @@
     /* 4 - life support, built to a margin rather than to the brink. A balance
        of +1 is one lander of arrivals away from a crisis, and a crisis costs
        22 morale a day plus crew health that takes weeks to win back. */
-    var lsMargin = 8 + s.pop * 0.05;
+    var lsMargin = 8 + Math.max(s.pop, st.housing || 0) * 0.05;
     if ((st.o2Bal || 0) < lsMargin)
       { if (act(s, 'expanded oxygen production', growAny(s, 'scrubber', subs, 3000))) return true; }
     if ((st.waterBal || 0) < lsMargin)
