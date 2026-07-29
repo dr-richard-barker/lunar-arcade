@@ -7,6 +7,8 @@
 
   var C = LH.C;
 
+  var SPINE_SPACING = 20;   // columns of colony per transit shaft
+
   /* -------------------------------------------------------------- helpers */
 
   function count(s, mid) { return LH.countOf(s, mid); }
@@ -17,6 +19,53 @@
 
   function afford(s, cost, floor) {
     return s.credits - cost >= (floor !== undefined ? floor : reserve(s));
+  }
+
+  /* Shaft columns are reserved on the first day and never built over, so a
+     transit shaft can always be dropped in as the colony widens. Without this
+     every column inside a mature colony is occupied on *some* level, no shaft
+     can ever be inserted, and the whole settlement ends up walking to a single
+     lift — which is what held morale below the tier-4 gate. */
+  function planCols(s) {
+    if (s.autoPlan) return s.autoPlan;
+    var base = s.autoShaftX !== undefined ? s.autoShaftX : Math.floor(C.GRID_W / 2) + 2;
+    var out = [];
+    for (var k = -8; k <= 8; k++) {
+      var c = base + k * SPINE_SPACING;
+      if (c >= 10 && c <= C.GRID_W - 8) out.push(c);
+    }
+    out.sort(function (p, q) { return Math.abs(p - base) - Math.abs(q - base); });
+    s.autoPlan = out;
+    return out;
+  }
+
+  /* Reserved columns that do not yet carry a shaft. */
+  function reservedFree(s) {
+    var plan = planCols(s), taken = {}, out = [];
+    for (var k in s.inst) {
+      var i = s.inst[k];
+      if (i.mid === 'lift' || i.mid === 'express') taken[i.x] = true;
+    }
+    for (var j = 0; j < plan.length; j++) if (!taken[plan[j]]) out.push(plan[j]);
+    return out;
+  }
+
+  /* Would a module here actually reach an airlock? Reserved columns split a
+     level into segments, so "next to something occupied" is not enough — the
+     neighbour itself has to be connected. Placing blind meant building a mess
+     hall into a stranded pocket and demolishing it again next step. */
+  function joinsColony(s, x, w, l) {
+    var sides = [LH.at(s, x - 1, l), LH.at(s, x + w, l)];
+    for (var i = 0; i < sides.length; i++) {
+      if (sides[i] && sides[i].dist < Infinity) return true;
+    }
+    return false;
+  }
+
+  function hitsReserved(s, x, w) {
+    var res = reservedFree(s);
+    for (var i = 0; i < res.length; i++) if (res[i] >= x && res[i] < x + w) return true;
+    return false;
   }
 
   /* Occupied extent of a level: [left, right] x or null. */
@@ -43,14 +92,19 @@
       cands.push(row[1] + 1);          // rightward
       cands.push(row[0] - m.w);        // leftward
     } else {
-      // empty level: start beside the main shaft column if it passes through
-      var sh = s.autoShaftX;
-      if (sh !== undefined) { cands.push(sh + 1); cands.push(sh - m.w); }
+      // empty level: start beside any shaft that reaches it
+      for (var sk in s.inst) {
+        var si = s.inst[sk];
+        if ((si.mid !== 'lift' && si.mid !== 'express') || l > si.l1 || l < si.l0) continue;
+        cands.push(si.x + 1); cands.push(si.x - m.w);
+      }
     }
     var broke = false;
     for (var i = 0; i < cands.length; i++) {
       var x = cands[i];
       if (x === null || x < 2 || x + m.w > C.GRID_W - 2) continue;
+      if (!m.vertical && hitsReserved(s, x, m.w)) continue;      // keep the spine clear
+      if (!m.vertical && !joinsColony(s, x, m.w, l)) continue;
       var chk = LH.checkPlace(s, mid, x, l, l);
       if (chk.ok && afford(s, chk.cost, floor)) {
         var r = LH.place(s, mid, x, l, l);
@@ -67,7 +121,8 @@
        the adjacency test is what stops it stranding modules. */
     for (var gx = 2; gx + m.w <= C.GRID_W - 2; gx++) {
       if (LH.occupied(s, gx, l)) continue;
-      if (!LH.occupied(s, gx - 1, l) && !LH.occupied(s, gx + m.w, l)) continue;
+      if (!m.vertical && hitsReserved(s, gx, m.w)) continue;     // keep the spine clear
+      if (!joinsColony(s, gx, m.w, l)) continue;
       var gchk = LH.checkPlace(s, mid, gx, l, l);
       if (!gchk.ok) {
         if (gchk.reason && gchk.reason.indexOf('Not enough credits') === 0) broke = true;
@@ -137,10 +192,24 @@
         if (cm.id === 'maint' || cm.id === 'admin') continue;    // keep the essentials
         if (cm.up > cutUp) { cut = cinst; cutUp = cm.up; }
       }
+      /* Selling a module out of the middle of a level cuts the corridor run
+         and strands everything beyond it, which the orphan sweep then
+         demolishes — one sale used to cascade into the whole colony. Only
+         sell something the colony can lose without severing itself. */
       if (cut) {
         var cName = LH.MOD[cut.mid].name;
+        var cMid = cut.mid, cX = cut.x, cL = cut.l;
+        var before = s.stats.orphans || 0;
         LH.remove(s, cut.iid);
-        return act(s, 'sold off the ' + cName + ' to stop the bleeding', true);
+        LH.solveTransit(s);
+        var after = 0;
+        for (var ok2 in s.inst) if (s.inst[ok2].dist === Infinity && s.inst[ok2].mid !== 'shield') after++;
+        if (after > before) {
+          LH.place(s, cMid, cX, cL, cL);          // load-bearing: put it back
+          LH.solveTransit(s);
+        } else {
+          return act(s, 'sold off the ' + cName + ' to stop the bleeding', true);
+        }
       }
     }
 
@@ -241,23 +310,37 @@
     }
 
     /* -- shared bookkeeping ------------------------------------------- */
-    var gen = 0, demand = (st.powerUse || 0);
+    /* Size power off full potential draw, never st.powerUse — that figure is
+       measured *after* load shedding, so during the very brownout the colony
+       needs to fix it reads low and the director concludes all is well. */
+    var gen = 0, demand = 0, solarGen = 0, steadyGen = 0;
     var dustTotal = 0, solarN = 0;
     for (var pk in s.inst) {
       var pi = s.inst[pk], pm = LH.MOD[pi.mid];
       if (pi.dist === Infinity) continue;
-      if (pm.power > 0) gen += pm.power * (1 - pi.dmg) * (pm.id === 'solar' ? (1 - pi.dust) : 1);
-      if (pm.id === 'solar') { dustTotal += pi.dust; solarN++; }
+      if (pm.power > 0) {
+        var out = pm.power * (1 - pi.dmg) * (pm.id === 'solar' ? (1 - pi.dust) : 1);
+        gen += out;
+        if (pm.id === 'solar') { solarGen += out; dustTotal += pi.dust; solarN++; }
+        else steadyGen += out;
+      } else if (pm.power < 0) demand -= pm.power;
     }
+    demand += s.pop * C.POWER_PER_POP + s.tourists * 0.15;
     var headroom = gen - demand;                        // at full sun
+    /* Generation must also bank enough surplus during the fourteen-day day to
+       carry the fourteen-day night, which means covering roughly twice the
+       demand the reactors do not already handle. */
+    var rechargeNeed = 2 * Math.max(0, demand - steadyGen);
     var bal = (st.income || 0) - (st.upkeep || 0);
 
     /* 3 - POWER before everything else: a browned-out colony earns nothing.
        Power builds may spend almost to the floor - they are survival. */
-    if ((st.shed || 0) > 0 || headroom < 12) {
+    if (headroom < 12 || solarGen < rechargeNeed * 0.95) {
+      if (s.tier >= 3 && act(s, 'commissioned a buried fission plant', deepBuild(s, 'fission', 3000)))
+        return true;
       if (act(s, 'raised another solar array', growOnLevel(s, 'solar', 0, 3000))) return true;
     }
-    if ((st.powerCap || 0) < (demand + 8) * (C.LUNAR_CYCLE / 2) * 0.9) {
+    if ((st.powerCap || 0) < Math.max(0, demand - steadyGen) * (C.LUNAR_CYCLE / 2) * 1.0) {
       var rBat = growOnLevel(s, 'battery', 0, 3000);
       if (rBat === null) rBat = growAny(s, 'battery', subs, 3000);   // batteries fit anywhere
       if (act(s, 'banked more batteries for the long night', rBat)) return true;
@@ -268,12 +351,15 @@
       if (act(s, 'added a maintenance bay to keep the arrays clean', rMb)) return true;
     }
 
-    /* 4 - life support: real daily balances first (they include staffing) */
-    if ((st.o2Bal || 0) < 1.5)
+    /* 4 - life support, built to a margin rather than to the brink. A balance
+       of +1 is one lander of arrivals away from a crisis, and a crisis costs
+       22 morale a day plus crew health that takes weeks to win back. */
+    var lsMargin = 8 + s.pop * 0.05;
+    if ((st.o2Bal || 0) < lsMargin)
       { if (act(s, 'expanded oxygen production', growAny(s, 'scrubber', subs, 3000))) return true; }
-    if ((st.waterBal || 0) < 1.5)
+    if ((st.waterBal || 0) < lsMargin)
       { if (act(s, 'expanded water recycling', growAny(s, 'recycler', subs, 3000))) return true; }
-    if ((st.foodBal || 0) < 1.5)
+    if ((st.foodBal || 0) < lsMargin)
       { if (act(s, 'expanded hydroponics', growAny(s, 'hydro', subs, 3000))) return true; }
     /* then theoretical headroom for the next wave of arrivals */
     var need = s.pop + 6;
@@ -300,8 +386,13 @@
     /* 5 - grow the settlement: housing fills itself, people pay rent.
        Housing is the engine of the whole economy - build it eagerly. */
     var vacancy = Math.floor(st.housing || 0) - Math.round(s.pop);
-    var deepSubs = subs.filter(function (l) { return l <= -2; });
-    if (vacancy < 4 && s.morale > 40) {
+    /* Three levels of rock is full radiation shielding; -1 and -2 are not,
+       and a colony housed there loses people to every solar flare. Put crew
+       under the rock first and only spread shallower if there is no room. */
+    var deepSubs = subs.filter(function (l) { return l <= -3; });
+    var canAbsorb = (st.o2Bal || 0) > 6 && (st.waterBal || 0) > 5.5 && (st.foodBal || 0) > 5 &&
+                    (st.shed || 0) === 0;
+    if (vacancy < 4 && s.morale > 40 && canAbsorb) {
       var hm = s.tier >= 2 ? 'block' : 'pod';
       var rH = growAny(s, hm, deepSubs, 5000);
       if (rH === null) rH = growAny(s, 'pod', deepSubs, 5000);
@@ -315,21 +406,68 @@
       // broke: hold the line and let rent accumulate
     }
 
-    /* 5.5 - commutes: satellite airlocks with their own shafts, capped */
-    var worstDist = 0;
-    for (var wd in s.inst) {
-      var wi = s.inst[wd];
-      if (LH.MOD[wi.mid].pop && wi.dist < Infinity && wi.dist > worstDist) worstDist = wi.dist;
+    /* 5.5 - the spine. Drop a transit shaft into the next reserved column the
+       colony has actually reached, with its own airlock beside it. The airlock
+       is what shortens transit (every airlock is a zero-distance source for
+       the solver); the shaft is what carries that benefit down to the levels
+       where people live. One lift for a hundred-and-thirty-column colony is
+       what pinned morale in the forties. */
+    var freeCols = reservedFree(s), spineCol = null;
+    for (var fc = 0; fc < freeCols.length; fc++) {
+      var cand = freeCols[fc], reached = false;
+      for (var rl = 0; rl >= (s.autoShaftBot || -8) && !reached; rl--) {
+        if (LH.occupied(s, cand - 1, rl) || LH.occupied(s, cand + 1, rl)) reached = true;
+      }
+      if (reached) { spineCol = cand; break; }
     }
-    var maxLocks = 1 + Math.floor(Math.max(s.pop, 1) / 35);
-    if (worstDist > C.COMMUTE_GOOD + 6 && count(s, 'airlock') < maxLocks) {
-      var rAL = growOnLevel(s, 'airlock', 0, 6000);
-      if (rAL && rAL !== 'broke') {
-        var al = rAL.inst;
-        var shaftCol = al.x > s.autoShaftX ? al.x + LH.MOD.airlock.w : al.x - 1;
-        var cS = LH.checkPlace(s, 'lift', shaftCol, 0, s.autoShaftBot || -8);
-        if (cS.ok && s.credits - cS.cost > 2000) LH.place(s, 'lift', shaftCol, 0, s.autoShaftBot || -8);
-        return act(s, 'opened a satellite airlock and shaft to shorten commutes', rAL);
+    if (spineCol !== null) {
+      var spKind = s.tier >= 3 ? 'express' : 'lift';
+      var spBot = s.autoShaftBot || -8;
+      var spChk = LH.checkPlace(s, spKind, spineCol, 0, spBot);
+      if (spChk.ok && afford(s, spChk.cost, 3000)) {
+        LH.place(s, spKind, spineCol, 0, spBot);
+        // a front door beside it, wherever there is room on the surface deck
+        for (var ao = 1; ao <= 6; ao++) {
+          var aOpts = [spineCol + ao, spineCol - LH.MOD.airlock.w - ao + 1];
+          var placed = false;
+          for (var ai = 0; ai < aOpts.length && !placed; ai++) {
+            var aChk = LH.checkPlace(s, 'airlock', aOpts[ai], 0, 0);
+            if (aChk.ok && afford(s, aChk.cost, 2000)) {
+              LH.place(s, 'airlock', aOpts[ai], 0, 0); placed = true;
+            }
+          }
+          if (placed) break;
+        }
+        return act(s, 'sank a transit shaft and airlock at column ' + spineCol, true);
+      }
+    }
+
+    /* 5.55 - every shaft deserves a door. The airlock used to be a one-shot
+       attempt made in the same breath as the shaft, so whenever the shaft had
+       just drained the treasury the colony ended up with shafts and no new
+       front doors — and an airlock is the thing that actually shortens
+       transit, because the solver measures distance from one. */
+    var shaftN = count(s, 'lift') + count(s, 'express');
+    if (count(s, 'airlock') < shaftN) {
+      for (var dk in s.inst) {
+        var dsh = s.inst[dk];
+        if (dsh.mid !== 'lift' && dsh.mid !== 'express') continue;
+        var near = false;
+        for (var nx = dsh.x - 7; nx <= dsh.x + 7 && !near; nx++) {
+          var no = LH.at(s, nx, 0);
+          if (no && no.mid === 'airlock') near = true;
+        }
+        if (near) continue;
+        for (var eo = 1; eo <= 6; eo++) {
+          var eOpts = [dsh.x + eo, dsh.x - LH.MOD.airlock.w - eo + 1];
+          for (var ei = 0; ei < eOpts.length; ei++) {
+            var eChk = LH.checkPlace(s, 'airlock', eOpts[ei], 0, 0);
+            if (eChk.ok && afford(s, eChk.cost, 3000)) {
+              LH.place(s, 'airlock', eOpts[ei], 0, 0);
+              return act(s, 'opened a front door at the column-' + dsh.x + ' shaft', true);
+            }
+          }
+        }
       }
     }
 
@@ -405,18 +543,26 @@
     }
 
     /* 7 - morale: amenities, scaled to the population they serve */
-    if (s.morale < 60 || s.pop > 10) {
+    /* Amenity coverage is the other half of morale, and these are cheap now.
+       Each want falls through when it cannot be met rather than aborting the
+       director — an unaffordable mess hall used to stop the medical bay, the
+       exercise deck and everything below it from ever being considered, which
+       is why a colony with a perfect transit spine still had zero coverage. */
+    if (s.morale < 78 || s.pop > 10) {
       var popN = Math.round(s.pop);
-      if (count(s, 'mess') < Math.max(1, Math.ceil(popN / 26)))
-        return act(s, 'opened a mess hall', growAny(s, 'mess', subs, 6000) || makeRoom(s, 'mess', subs, 6000));
-      if (popN > 14 && count(s, 'med') < Math.max(1, Math.ceil(popN / 70)))
-        return act(s, 'staffed a medical bay', growAny(s, 'med', subs, 6000) || makeRoom(s, 'med', subs, 6000));
-      if (popN > 24 && count(s, 'gym') < Math.max(1, Math.ceil(popN / 55)))
-        return act(s, 'fitted an exercise deck', growAny(s, 'gym', subs, 6000) || makeRoom(s, 'gym', subs, 6000));
-      if (s.tier >= 3 && count(s, 'rec') < Math.ceil(popN / 90))
-        if (act(s, 'inflated a rec dome', growAny(s, 'rec', subs) || makeRoom(s, 'rec', subs, 8000))) return true;
-      if (s.tier >= 3 && popN > 30 && count(s, 'school') === 0)
-        if (act(s, 'opened the school', growAny(s, 'school', subs) || makeRoom(s, 'school', subs, 8000))) return true;
+      var wants = [
+        ['mess',   Math.max(1, Math.ceil(popN / 26)),            'opened a mess hall'],
+        ['gym',    popN > 14 ? Math.max(1, Math.ceil(popN / 55)) : 0, 'fitted an exercise deck'],
+        ['med',    popN > 14 ? Math.max(1, Math.ceil(popN / 70)) : 0, 'staffed a medical bay'],
+        ['rec',    s.tier >= 3 ? Math.ceil(popN / 90) : 0,        'inflated a rec dome'],
+        ['school', s.tier >= 3 && popN > 30 ? 1 : 0,              'opened the school']
+      ];
+      for (var wi = 0; wi < wants.length; wi++) {
+        if (count(s, wants[wi][0]) >= wants[wi][1]) continue;
+        var rW = growAny(s, wants[wi][0], subs, 3000);
+        if (rW === null) rW = makeRoom(s, wants[wi][0], subs, 3000);
+        if (act(s, wants[wi][2], rW)) return true;
+      }
     }
 
     /* 8 - charter progress: build whatever the next tier explicitly needs */
