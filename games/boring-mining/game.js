@@ -621,33 +621,215 @@ function bore(tx, ty, work, colId, taker, hubFactor) {
 }
 
 /* ------------------------------------------------------------------- input */
+/* ==========================================================================
+   INPUT
+   Every action is addressed by name, never by hard-coded key, so the whole
+   scheme can be rebound at runtime. The same actions are reachable from a
+   pointer, a touch screen and the on-screen pads.
+   ========================================================================== */
+const DEFAULT_BINDS = {
+  up:          ['w', 'arrowup'],
+  down:        ['s', 'arrowdown'],
+  left:        ['a', 'arrowleft'],
+  right:       ['d', 'arrowright'],
+  bore:        [' '],
+  oreBeacon:   ['q'],
+  rallyBeacon: ['e'],
+  printMiner:  ['1'],
+  printGuard:  ['2'],
+  autofab:     ['3'],
+  beacons:     ['m'],
+  recentre:    ['c'],
+  autoplay:    ['f'],
+  pause:       ['p'],
+  speedDown:   ['['],
+  speedUp:     [']'],
+  mute:        ['n'],
+  audioPack:   ['b'],
+  music:       ['v'],
+};
+const ACTION_INFO = {
+  up:          ['Thrust up',            'move'],
+  down:        ['Thrust down',          'move'],
+  left:        ['Thrust left',          'move'],
+  right:       ['Thrust right',         'move'],
+  bore:        ['Bore (hold)',          'move'],
+  oreBeacon:   ['Drop ore beacon',      'swarm'],
+  rallyBeacon: ['Drop rally beacon',    'swarm'],
+  printMiner:  ['Print mining drone',   'swarm'],
+  printGuard:  ['Print guard drone',    'swarm'],
+  autofab:     ['Toggle autofab',       'swarm'],
+  beacons:     ['Beacon overlay',       'view'],
+  recentre:    ['Recentre on DRONE-01', 'view'],
+  autoplay:    ['Autoplay on/off',      'view'],
+  pause:       ['Pause',                'view'],
+  speedDown:   ['Slower',               'view'],
+  speedUp:     ['Faster',               'view'],
+  mute:        ['Mute audio',           'audio'],
+  audioPack:   ['Next audio pack',      'audio'],
+  music:       ['Score on/off',         'audio'],
+};
+const MOVE_ACTIONS = ['up', 'down', 'left', 'right'];
+
+let binds = JSON.parse(JSON.stringify(DEFAULT_BINDS));
+try {
+  const saved = JSON.parse(localStorage.getItem('bmg_binds') || 'null');
+  if (saved && typeof saved === 'object')
+    for (const a in DEFAULT_BINDS) if (Array.isArray(saved[a]) && saved[a].length) binds[a] = saved[a];
+} catch (e) {}
+function saveBinds() { try { localStorage.setItem('bmg_binds', JSON.stringify(binds)); } catch (e) {} }
+
 const keys = {};
+const normKey = e => (e.key === ' ' ? ' ' : e.key.toLowerCase());
+function actionFor(k) { for (const a in binds) if (binds[a].includes(k)) return a; return null; }
+function isDown(a) { const b = binds[a]; for (let i = 0; i < b.length; i++) if (keys[b[i]]) return true; return false; }
+function keyLabel(k) {
+  if (k === ' ') return 'SPACE';
+  if (k.startsWith('arrow')) return { arrowup: '↑', arrowdown: '↓', arrowleft: '←', arrowright: '→' }[k] || k;
+  if (k === 'escape') return 'ESC';
+  return k.toUpperCase();
+}
+
+/* ---- rebinding capture ---- */
+let capturing = null;                 // action name while waiting for a key
+
 addEventListener('keydown', e => {
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
-  if (keys[e.key.toLowerCase()]) return;
-  keys[e.key.toLowerCase()] = true;
+  const k = normKey(e);
+
+  if (capturing) {                     // swallow the keystroke, assign it
+    e.preventDefault();
+    if (k !== 'escape') assignKey(capturing, k);
+    capturing = null;
+    renderControls();
+    return;
+  }
+
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+  if (keys[k]) return;
+  keys[k] = true;
   if (!running) return;
-  const k = e.key.toLowerCase();
+
+  const a = actionFor(k);
+  if (k === 'escape') { quitToTitle(); return; }
+  if (!a) return;
+
   // any steering input takes the stick back from the autopilot
-  if (auto.on && (k.length === 1 && 'wasd'.includes(k) || k.startsWith('arrow'))) setAuto(false);
-  if (k === 'f') setAuto(!auto.on);
-  if (k === 'n') setMuted(!muted);
-  if (k === 'v') setMusic(!musicOn);
-  if (k === 'b') setPack(PACK_IDS[(PACK_IDS.indexOf(pack) + 1) % PACK_IDS.length], true);
-  if (k === '[') setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(speed) - 1)]);
-  if (k === ']') setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(speed) + 1)]);
-  if (k === 'p') togglePause();
-  if (k === 'm') showBeacons = !showBeacons;
-  if (k === 'escape') quitToTitle();
+  if (auto.on && MOVE_ACTIONS.includes(a)) setAuto(false);
+  if (MOVE_ACTIONS.includes(a)) followPlayer();
+
+  if (a === 'autoplay')   setAuto(!auto.on);
+  if (a === 'mute')       setMuted(!muted);
+  if (a === 'music')      setMusic(!musicOn);
+  if (a === 'audioPack')  setPack(PACK_IDS[(PACK_IDS.indexOf(pack) + 1) % PACK_IDS.length], true);
+  if (a === 'speedDown')  setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(speed) - 1)]);
+  if (a === 'speedUp')    setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(speed) + 1)]);
+  if (a === 'pause')      togglePause();
+  if (a === 'beacons')    showBeacons = !showBeacons;
+  if (a === 'recentre')   followPlayer();
   if (over) return;
-  if (k === '1') order('miner');
-  if (k === '2') order('guard');
-  if (k === '3') { colonies[PLAYER].auto = !colonies[PLAYER].auto; log(colonies[PLAYER].auto ? 'Autofab <b>engaged</b> — 2 miners per guard.' : 'Autofab disengaged.'); }
-  if (k === 'q') dropBeacon(trail[PLAYER], 2.4, '#ffc857', 'Ore beacon dropped. Miners will sweep here.');
-  if (k === 'e') dropBeacon(alarm[PLAYER], 2.6, '#ff9d5a', 'Rally beacon dropped. Guards converging.');
+  if (a === 'printMiner') order('miner');
+  if (a === 'printGuard') order('guard');
+  if (a === 'autofab') {
+    colonies[PLAYER].auto = !colonies[PLAYER].auto;
+    log(colonies[PLAYER].auto ? 'Autofab <b>engaged</b> — 2 miners per guard.' : 'Autofab disengaged.');
+  }
+  if (a === 'oreBeacon')   dropBeacon(trail[PLAYER], 2.4, '#ffc857', 'Ore beacon dropped. Miners will sweep here.');
+  if (a === 'rallyBeacon') dropBeacon(alarm[PLAYER], 2.6, '#ff9d5a', 'Rally beacon dropped. Guards converging.');
 });
-addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('keyup', e => { keys[normKey(e)] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+function assignKey(action, k) {
+  // a key belongs to one action at a time
+  for (const a in binds) {
+    if (a === action) continue;
+    const i = binds[a].indexOf(k);
+    if (i >= 0) {
+      binds[a].splice(i, 1);
+      if (!binds[a].length) binds[a] = ['—'];      // placeholder: unbound
+    }
+  }
+  binds[action] = [k];
+  saveBinds();
+}
+
+/* ==========================================================================
+   POINTER + TOUCH
+   Dragging the world steers DRONE-01 toward the pointer and bores whatever it
+   runs into; dragging the minimap flies the camera anywhere on the claim.
+   ========================================================================== */
+let ptr = { active: false, x: 0, y: 0 };     // world coords of a held pointer
+let touchBore = false, touchMode = false;
+
+function setTouchMode(on) {
+  touchMode = on;
+  $('touchpad').classList.toggle('on', on);
+  document.querySelector('.stage').classList.toggle('touch', on);
+  $('btn-touch').classList.toggle('on', on);
+  try { localStorage.setItem('bmg_touch', on ? '1' : '0'); } catch (e) {}
+}
+
+/* screen -> world, accounting for the canvas being CSS-scaled.
+   Returns null if the canvas has no layout box (hidden tab, collapsed
+   container) — otherwise the scale factor is Infinity and NaN reaches the
+   drone's velocity, which would corrupt the run permanently. */
+function viewToWorld(ev) {
+  const r = view.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  return {
+    x: cam.x + (ev.clientX - r.left) * (VW / r.width),
+    y: cam.y + (ev.clientY - r.top) * (VH / r.height),
+  };
+}
+
+view.addEventListener('pointerdown', ev => {
+  if (!running || over) return;
+  if (ev.pointerType === 'touch' && !touchMode) setTouchMode(true);
+  ev.preventDefault();
+  view.setPointerCapture(ev.pointerId);
+  if (auto.on) setAuto(false);
+  const w = viewToWorld(ev);
+  if (!w) return;
+  ptr.active = true; ptr.x = w.x; ptr.y = w.y;
+  followPlayer();
+});
+view.addEventListener('pointermove', ev => {
+  if (!ptr.active) return;
+  const w = viewToWorld(ev);
+  if (!w) return;
+  ptr.x = w.x; ptr.y = w.y;
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(t =>
+  view.addEventListener(t, () => { ptr.active = false; }));
+view.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ---- minimap: click or drag to fly the camera ---- */
+let miniDrag = false;
+function miniToCam(ev) {
+  const r = mini.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const fx = clamp((ev.clientX - r.left) / r.width, 0, 1);
+  const fy = clamp((ev.clientY - r.top) / r.height, 0, 1);
+  cam.free = true;
+  cam.tx = clamp(fx * WW - VW / 2, 0, WW - VW);
+  cam.ty = clamp(fy * WH - VH / 2, 0, WH - VH);
+  $('btn-recentre').classList.add('on');
+}
+mini.addEventListener('pointerdown', ev => {
+  if (!running) return;
+  ev.preventDefault(); ev.stopPropagation();
+  mini.setPointerCapture(ev.pointerId);
+  miniDrag = true; miniToCam(ev);
+});
+mini.addEventListener('pointermove', ev => { if (miniDrag) miniToCam(ev); });
+['pointerup', 'pointercancel'].forEach(t =>
+  mini.addEventListener(t, () => { miniDrag = false; }));
+
+function followPlayer() {
+  if (!cam) return;
+  cam.free = false;
+  $('btn-recentre').classList.remove('on');
+}
 
 function dropBeacon(field, amount, colour, msg) {
   if (!player || !player.alive) return;
@@ -714,8 +896,9 @@ function startGame() {
     spawnCrawler(tx * TS + TS / 2, ty * TS + TS / 2); placed++;
   }
 
-  cam = { x: player.x - VW / 2, y: player.y - VH / 2 };
+  cam = { x: player.x - VW / 2, y: player.y - VH / 2, free: false, tx: 0, ty: 0 };
   running = true;
+  followPlayer();
   show('screen-game');
   log('Colony <b>BORE-1</b> deployed. Contract: ' + DIFF[diff].name + '.');
   log('Bore a seam, haul it home. <b>SPACE</b> to bore.');
@@ -896,11 +1079,12 @@ function update(dt) {
     if (p.age > p.life) parts.splice(i, 1);
   }
 
-  // camera
-  const tx = clamp(player.x - VW / 2, 0, WW - VW);
-  const ty = clamp(player.y - VH / 2, 0, WH - VH);
-  cam.x = lerp(cam.x, tx, 1 - Math.pow(0.0009, dt));
-  cam.y = lerp(cam.y, ty, 1 - Math.pow(0.0009, dt));
+  // camera — follows DRONE-01 unless the minimap has taken it somewhere
+  const tx = cam.free ? cam.tx : clamp(player.x - VW / 2, 0, WW - VW);
+  const ty = cam.free ? cam.ty : clamp(player.y - VH / 2, 0, WH - VH);
+  const k = 1 - Math.pow(cam.free ? 0.000002 : 0.0009, dt);
+  cam.x = lerp(cam.x, tx, k);
+  cam.y = lerp(cam.y, ty, k);
 
   if (!over) {
     if (colonies[HELIOS].integrity <= 0) endGame(true);
@@ -915,15 +1099,21 @@ function updatePlayer(dt) {
   const p = player;
   if (!p.alive) { p.boreTile = -1; relink(); return; }
 
-  let ax = 0, ay = 0, boring = keys[' '];
+  let ax = 0, ay = 0, boring = isDown('bore') || touchBore;
   if (auto.on) {
     const cmd = autopilot(dt);
     ax = cmd.x; ay = cmd.y; boring = cmd.bore;
   } else {
-    if (keys['a'] || keys['arrowleft'])  ax -= 1;
-    if (keys['d'] || keys['arrowright']) ax += 1;
-    if (keys['w'] || keys['arrowup'])    ay -= 1;
-    if (keys['s'] || keys['arrowdown'])  ay += 1;
+    if (isDown('left'))  ax -= 1;
+    if (isDown('right')) ax += 1;
+    if (isDown('up'))    ay -= 1;
+    if (isDown('down'))  ay += 1;
+    // A held pointer (mouse or finger) flies the drone at it and bores what it
+    // meets — this is the whole control scheme on a touch screen.
+    if (!ax && !ay && ptr.active) {
+      const dx = ptr.x - p.x, dy = ptr.y - p.y, d = Math.hypot(dx, dy);
+      if (d > 9 && isFinite(d)) { ax = dx / d; ay = dy / d; boring = true; }
+    }
   }
   if (ax || ay) {
     const m = Math.hypot(ax, ay);
@@ -1552,6 +1742,17 @@ function render() {
     vctx.fillStyle = 'rgba(111,214,232,.9)';
     vctx.fillText(speed + '×', 14, auto.on ? 56 : 30);
   }
+  if (cam.free) {
+    const lbl = 'FREE LOOK · RECENTRE TO RESUME TRACKING';
+    vctx.font = '700 11px ui-monospace,monospace';
+    const w = vctx.measureText(lbl).width + 18;
+    vctx.fillStyle = 'rgba(111,214,232,.9)';
+    vctx.fillRect(VW / 2 - w / 2, 14, w, 22);
+    vctx.fillStyle = '#04070c';
+    vctx.textAlign = 'center';
+    vctx.fillText(lbl, VW / 2, 29);
+    vctx.textAlign = 'left';
+  }
 
   if (frame % 6 === 0) drawMini();
   updateHud();
@@ -1933,6 +2134,78 @@ $('btn-start').onclick = () => { if (actx && actx.state === 'suspended') actx.re
 $('btn-help-title').onclick = () => show('screen-help');
 $('btn-help-back').onclick = () => show('screen-title');
 
+/* ==========================================================================
+   CONTROLS SCREEN — tutorial + rebindable keys
+   ========================================================================== */
+let controlsReturn = 'screen-title';
+
+const BIND_GROUPS = [
+  ['Piloting',     'move'],
+  ['The swarm',    'swarm'],
+  ['View & speed', 'view'],
+  ['Audio',        'audio'],
+];
+
+function renderControls() {
+  $('binds').innerHTML = BIND_GROUPS.map(([title, cat]) => {
+    const rows = Object.keys(ACTION_INFO)
+      .filter(a => ACTION_INFO[a][1] === cat)
+      .map(a => {
+        const keysFor = binds[a] || [];
+        const unbound = !keysFor.length || keysFor[0] === '—';
+        const label = unbound ? 'unbound' : keysFor.map(keyLabel).join(' / ');
+        const cls = 'keycap' + (capturing === a ? ' cap' : unbound ? ' none' : '');
+        return '<div class="bindrow"><span class="nm">' + ACTION_INFO[a][0] + '</span>' +
+               '<button class="' + cls + '" data-bind="' + a + '">' +
+               (capturing === a ? 'press…' : label) + '</button></div>';
+      }).join('');
+    return '<div class="bindgroup"><h4>' + title + '</h4><div class="bindlist">' + rows + '</div></div>';
+  }).join('');
+
+  $('binds').querySelectorAll('[data-bind]').forEach(b => {
+    b.onclick = () => { capturing = b.dataset.bind; renderControls(); };
+  });
+}
+
+function openControls(from) {
+  controlsReturn = from;
+  capturing = null;
+  renderControls();
+  show('screen-controls');
+}
+
+$('btn-controls-title').onclick = () => openControls('screen-title');
+$('btn-controls-hud').onclick = () => { if (running && !paused && !over) togglePause(); openControls('screen-game'); };
+$('btn-controls-back').onclick = () => { capturing = null; show(controlsReturn); };
+$('btn-binds-reset').onclick = () => {
+  binds = JSON.parse(JSON.stringify(DEFAULT_BINDS));
+  saveBinds(); capturing = null; renderControls();
+};
+
+/* ------------------------------------------------------------ touch pad */
+$('btn-touch').onclick = () => setTouchMode(!touchMode);
+$('btn-recentre').onclick = () => followPlayer();
+
+document.querySelectorAll('#touchpad .tbtn').forEach(b => {
+  if (b.dataset.hold) {                                    // BORE: hold to drill
+    const on  = e => { e.preventDefault(); touchBore = true;  b.classList.add('down'); if (auto.on) setAuto(false); };
+    const off = e => { e.preventDefault(); touchBore = false; b.classList.remove('down'); };
+    b.addEventListener('pointerdown', on);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => b.addEventListener(t, off));
+  } else {
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (!running || over) return;
+      const a = b.dataset.act;
+      if (a === 'recentre')    { followPlayer(); return; }
+      if (a === 'oreBeacon')   dropBeacon(trail[PLAYER], 2.4, '#ffc857', 'Ore beacon dropped. Miners will sweep here.');
+      if (a === 'rallyBeacon') dropBeacon(alarm[PLAYER], 2.6, '#ff9d5a', 'Rally beacon dropped. Guards converging.');
+      if (a === 'printMiner')  order('miner');
+      if (a === 'printGuard')  order('guard');
+    });
+  }
+});
+
 /* ---------------------------------------------------------- league table */
 $('btn-league-title').onclick = () => { renderLeague(); show('screen-league'); };
 $('btn-league-back').onclick = () => show('screen-title');
@@ -2015,6 +2288,7 @@ try {
   musicOn = localStorage.getItem('bmg_music') !== '0';
   const sp2 = localStorage.getItem('bmg_pack');
   if (sp2 && PACKS[sp2]) pack = sp2;
+  if (localStorage.getItem('bmg_touch') === '1') setTouchMode(true);
   const d = +localStorage.getItem('bmg_diff');
   if (d >= 0 && d <= 2) {
     diff = d;

@@ -42,6 +42,7 @@
       <div class="row">
         <button class="btn big" id="btn-start">DEPLOY COLONY ►</button>
         <button class="btn" id="btn-help-title">HOW TO PLAY</button>
+        <button class="btn" id="btn-controls-title">CONTROLS</button>
         <button class="btn" id="btn-league-title">LEAGUE TABLE</button>
         <button class="btn" id="btn-mute">SOUND: ON</button>
         <button class="btn" id="btn-music">MUSIC: ON</button>
@@ -139,6 +140,66 @@
     </div>
   </section>
 
+  <!-- ============================ CONTROLS ============================ -->
+  <section id="screen-controls" class="screen">
+    <div class="panel">
+      <h2>OPERATIONS MANUAL · CONTROL SCHEME</h2>
+      <h1 style="font-size:30px">CONTROLS</h1>
+
+      <div class="help-grid">
+        <div>
+          <h3>MOUSE</h3>
+          <ul>
+            <li><b>Press and hold anywhere on the rock</b> — DRONE-01 flies at your pointer and
+                bores whatever it runs into. Drag the pointer around and it follows. This alone
+                is enough to play the whole game.</li>
+            <li>Release to stop. Keyboard thrust overrides the pointer while held.</li>
+          </ul>
+          <h3>MINIMAP</h3>
+          <ul>
+            <li><b>Click or drag the minimap</b> to fly the camera anywhere on the claim —
+                useful for watching the swarm work, or scouting Helios.</li>
+            <li>The view stays where you put it until you <b>recentre</b>: press the bound key,
+                hit <b>RECENTRE</b> in the status bar, or just steer the drone.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>TOUCH · IPAD</h3>
+          <ul>
+            <li><b>Drag on the rock</b> to fly and bore, exactly as with a mouse.</li>
+            <li>A pad of action buttons appears at the bottom of the view the first time you
+                touch it — <b>BORE</b> is hold-to-drill, the rest are single taps.</li>
+            <li>Toggle the pad any time with <b>TOUCH</b> in the status bar.</li>
+            <li>The view never scrolls or zooms under your finger while you play.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>THE FOUR VERBS</h3>
+          <ul>
+            <li><b>Bore</b> — break rock. Ore and ice load straight into your hold; fly home and
+                it unloads itself.</li>
+            <li><b>Ore beacon</b> — a scent bloom that pulls mining drones to a seam.</li>
+            <li><b>Rally beacon</b> — pulls guards. Plant one on the Helios fabricator and your
+                guards read it as an assault order.</li>
+            <li><b>Print</b> — spend ore, ice and power on another drone.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>KEY BINDINGS</h3>
+      <p class="dim" style="margin-top:0">Click any key to rebind it, then press the new key.
+      <kbd>ESC</kbd> cancels. A key can only belong to one action at a time.</p>
+      <div id="binds"></div>
+
+      <div class="row">
+        <button class="btn big" id="btn-controls-back">◄ BACK</button>
+        <button class="btn" id="btn-binds-reset">RESET TO DEFAULTS</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ============================ LEAGUE ============================ -->
   <section id="screen-league" class="screen">
     <div class="panel">
@@ -163,6 +224,9 @@
       <div class="stat"><span class="k">CARGO</span><span class="v" id="hud-cargo">0/4</span></div>
       <div class="stat"><span class="k">HULL</span><div class="bar hp"><i id="hud-hp"></i></div></div>
       <div class="spacer"></div>
+      <button class="minibtn" id="btn-recentre" title="Recentre the view on DRONE-01">RECENTRE</button>
+      <button class="minibtn" id="btn-touch" title="Show the touch control pad">TOUCH</button>
+      <button class="minibtn" id="btn-controls-hud" title="Controls &amp; key bindings">CONTROLS</button>
       <button class="minibtn" id="btn-mute-hud" title="Mute all audio (N)">SFX</button>
       <button class="minibtn" id="btn-music-hud" title="Adaptive score on/off (V)">&#9834;</button>
       <select id="pack-dial" class="dial" aria-label="Audio pack" title="Audio pack (B)">
@@ -192,6 +256,14 @@
       <canvas id="view" width="1280" height="720"></canvas>
       <canvas id="mini" width="228" height="135"></canvas>
       <div id="ticker"></div>
+      <div id="touchpad">
+        <button class="tbtn hold" data-hold="1">BORE</button>
+        <button class="tbtn" data-act="oreBeacon">ORE</button>
+        <button class="tbtn" data-act="rallyBeacon">RALLY</button>
+        <button class="tbtn" data-act="printMiner">+MINER</button>
+        <button class="tbtn" data-act="printGuard">+GUARD</button>
+        <button class="tbtn" data-act="recentre">CENTRE</button>
+      </div>
       <div id="banner"><div>
         <h1 id="banner-title">PAUSED</h1>
         <p id="banner-body" class="dim"></p>
@@ -216,6 +288,7 @@
       <span><kbd>N</kbd> mute</span>
       <span><kbd>B</kbd> audio pack</span>
       <span><kbd>V</kbd> music</span>
+      <span>drag to fly · minimap to pan</span>
       <span><kbd>[</kbd> <kbd>]</kbd> speed</span>
     </div>
   </section>
