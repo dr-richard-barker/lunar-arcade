@@ -1,6 +1,6 @@
 /* ==========================================================================
-   THE BORING MINING GAME — lunar colony sim
-   Original fan-made tribute to the colony-sim genre. Hard-dark industrial UI.
+   THE BORING MINING GAME — lunar ISRU drone-swarm sim
+   Original fan-made tribute. NASA-flavoured mission-console UI on hard dark.
    ========================================================================== */
 
 :root{
@@ -10,7 +10,7 @@
   --line:#1e2b3d;
   --fg:#dfe7f2;
   --muted:#7d8ca3;
-  --amber:#ffc857;      /* your colony */
+  --amber:#ffc857;      /* BORE-1, your drone swarm */
   --amber-dim:#8a6b2c;
   --red:#ff5a5a;        /* Helios, the rival colony */
   --ice:#6fd6e8;
@@ -33,7 +33,7 @@ body{
     radial-gradient(800px 500px at 10% 110%, #0b1420 0%, transparent 60%);
 }
 
-#app{width:100%; max-width:1000px}
+#app{width:100%; max-width:1340px}
 
 /* ---------- screens ---------- */
 .screen{display:none}
@@ -98,6 +98,7 @@ a{color:var(--ice)}
 .stat .v{font-weight:700; min-width:2ch}
 .v.ore{color:var(--ore)} .v.ice{color:var(--ice)}
 .v.pow{color:var(--ok)} .v.amb{color:var(--amber)} .v.red{color:var(--red)}
+.v.ok{color:var(--ok)}
 .spacer{flex:1}
 
 .minibtn{
@@ -126,7 +127,7 @@ select.dial:hover{border-color:var(--amber-dim)}
 #view{display:block; width:100%; height:auto; image-rendering:pixelated; cursor:crosshair}
 
 #mini{
-  position:absolute; right:10px; top:10px; width:200px; height:120px;
+  position:absolute; right:10px; top:10px; width:228px; height:135px;
   border:1px solid var(--line); border-radius:5px; background:rgba(5,7,12,.82);
   image-rendering:pixelated;
 }
@@ -168,6 +169,6 @@ select.dial:hover{border-color:var(--amber-dim)}
 
 @media (max-width:640px){
   .panel{padding:18px}
-  #mini{width:130px; height:80px}
+  #mini{width:140px; height:83px}
   .hud{font-size:11px; gap:9px}
 }

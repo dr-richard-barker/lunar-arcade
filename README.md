@@ -31,16 +31,28 @@ formula inverted: the surface is the most dangerous floor in the building.
   33 module types across infrastructure, power, life support, habitation,
   industry, mining and amenities.
 
+- **Autopilot** (`◈ AUTO` / `B`): a colony-director AI that plays the game
+  itself — it sites the airlock, sinks shafts, balances power against the lunar
+  night, reacts to real life-support balances, opens satellite airlocks when
+  commutes grow, and sells the gym when the books go red. Play-tested to
+  200+ population over 1,500 days unattended.
+- **Mission Control dashboard** (`📡 REPORT` / `R`): an uplink-styled status
+  report with growth sparklines, a board assessment grade, and the full colony
+  census.
+- **Sandbox mode** (`⚒ SANDBOX` / `S`): all modules free, all tiers unlocked.
+
 Saves live in the browser's localStorage (autosave every 90 seconds).
 
 Code layout: `js/config.js` (all tuning constants and the module catalogue),
 `js/grid.js` (world state, placement rules, Dijkstra transit solver),
-`js/sim.js` (the daily tick), `js/render.js` (procedural canvas renderer),
-`js/ui.js` (DOM chrome), `js/main.js` (input + main loop).
+`js/sim.js` (the daily tick), `js/render.js` (procedural canvas renderer with
+per-module animated interiors), `js/autopilot.js` (the colony director),
+`js/report.js` (Mission Control dashboard), `js/ui.js` (DOM chrome),
+`js/main.js` (input + main loop).
 
 ### The Boring Mining Game (`games/boring-mining/`) — playable
 
-A colony sim in the ant-farm tradition, on a lunar ore claim. You pilot
+A lunar ISRU drone-swarm sim on a contested ore claim. You pilot
 DRONE-01 — one unit of a swarm that is otherwise autonomous — while a rival
 colony, Helios Extraction, works the same rock from the far side of the map.
 Bore the fabricator's integrity to zero to win; lose yours and the contract
@@ -66,6 +78,11 @@ ends.
   siege. It wins unaided on all three difficulties in roughly 9–11 minutes.
 - **Speed dial** runs the sim from 0.25× to 8× on a fixed 1/60s timestep, so
   the physics are identical at every speed.
+- **The surface plant grows with what it receives.** Cumulative delivered
+  tonnage moves the plant through six build tiers — solar arrays, a high-gain
+  dish, volatile tanks, radiator fins, a habitat dome — and once the pad is up
+  it periodically launches a cargo stack to Earth orbit. A third of every ore
+  delivery is set aside for that contract; shipped tonnage is your score.
 
 Single file each: `index.html`, `style.css`, `game.js` (no modules, no build).
 

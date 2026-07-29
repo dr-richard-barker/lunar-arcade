@@ -10,7 +10,7 @@
   /* ------------------------------------------------------------- canvas */
 
   function resize() {
-    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var dpr = Math.min(3, window.devicePixelRatio || 1);
     var r = cv.getBoundingClientRect();
     cv.width = Math.max(320, Math.floor(r.width * dpr));
     cv.height = Math.max(240, Math.floor(r.height * dpr));
@@ -90,7 +90,7 @@
       var p = pt(e);
       var before = R.screenToGrid(p.x, p.y, cv);
       var f = e.deltaY < 0 ? 1.16 : 1 / 1.16;
-      R.cam.z = Math.max(0.35, Math.min(3.2, R.cam.z * f));
+      R.cam.z = Math.max(0.22, Math.min(2.6, R.cam.z * f));
       var after = R.screenToGrid(p.x, p.y, cv);
       R.cam.x += before.wx - after.wx;
       R.cam.y += before.wy - after.wy;
@@ -99,8 +99,11 @@
 
     window.addEventListener('keydown', function (e) {
       if (e.code === 'Space') { spaceDown = true; e.preventDefault(); }
-      if (e.key === 'Escape') { LH.setTool(null); ui.tool = null; LH.buildPalette(LH.S); LH.setHint(null); hideModal(); }
+      if (e.key === 'Escape') { LH.setTool(null); ui.tool = null; LH.buildPalette(LH.S); LH.setHint(null); hideModal(); LH.hideReport(); }
       if (e.key === 'x' || e.key === 'X') LH.setTool('bulldoze');
+      if (e.key === 'b' || e.key === 'B') LH.toggleAuto();
+      if (e.key === 's' || e.key === 'S') LH.toggleSandbox();
+      if (e.key === 'r' || e.key === 'R') { if (LH.reportOpen()) LH.hideReport(); else LH.showReport(); }
       if (e.key === '?' || e.key === '/') showModal();
       if (e.key >= '1' && e.key <= '4') setSpeed([0, 1, 3, 8][+e.key - 1]);
       var pan = 90 / R.cam.z;
@@ -116,9 +119,12 @@
 
     window.addEventListener('resize', resize);
 
-    Array.prototype.forEach.call(document.querySelectorAll('#speed button'), function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll('#speed button[data-sp]'), function (b) {
       b.onclick = function () { setSpeed(+b.dataset.sp); };
     });
+    document.getElementById('btn-auto').onclick = LH.toggleAuto;
+    document.getElementById('btn-report').onclick = function () { LH.showReport(); };
+    document.getElementById('btn-sandbox').onclick = LH.toggleSandbox;
   }
 
   function hitMinimap(p) {
@@ -157,7 +163,7 @@
 
   function setSpeed(sp) {
     LH.S.speed = sp;
-    Array.prototype.forEach.call(document.querySelectorAll('#speed button'), function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll('#speed button[data-sp]'), function (b) {
       b.classList.toggle('on', +b.dataset.sp === sp);
     });
   }
@@ -176,6 +182,7 @@
       while (acc >= C.DAY_MS && guard++ < 12) {
         acc -= C.DAY_MS;
         LH.tick(s);
+        LH.autopilot(s);
       }
       if (guard > 0) {
         LH.refreshTop(s);
@@ -215,7 +222,8 @@
         credits: s.credits, day: s.day, cells: s.cells, inst: s.inst, dug: s.dug,
         nextId: s.nextId, res: s.res, pop: s.pop, tourists: s.tourists,
         morale: s.morale, health: s.health, tier: s.tier, log: s.log.slice(0, 40),
-        deaths: s.deaths, flare: s.flare
+        deaths: s.deaths, flare: s.flare, auto: s.auto, sandbox: s.sandbox,
+        autoShaftX: s.autoShaftX, autoShaftBot: s.autoShaftBot
       }));
       LH.toast('Colony saved to this browser.', 'good');
     } catch (err) {
@@ -248,7 +256,7 @@
     if (!window.confirm('Abandon this colony and start a new one? The saved game will be overwritten when you next save.')) return;
     LH.S = LH.newState();
     ui.sel = null; ui.tool = null; lastTier = 1; lastLogLen = 0;
-    R.cam = { x: C.GRID_W * C.CELL_W / 2, y: 0, z: 1.1 };
+    R.cam = { x: C.GRID_W * C.CELL_W / 2, y: 0, z: 0.8 };
     LH.buildPalette(LH.S); LH.refreshTop(LH.S); LH.refreshPanel(LH.S);
     LH.toast('New survey site. Good luck.', 'good');
   };
@@ -263,10 +271,10 @@
   function start(loaded) {
     hideModal();
     if (!loaded) {
-      R.cam = { x: C.GRID_W * C.CELL_W / 2, y: -C.CELL_H * 2, z: 1.15 };
+      R.cam = { x: C.GRID_W * C.CELL_W / 2, y: -C.CELL_H * 2, z: 0.8 };
       LH.log(LH.S, 'good', 'Survey complete. Charter granted. Build an airlock, then dig.');
     } else {
-      R.cam = { x: C.GRID_W * C.CELL_W / 2, y: 0, z: 1.05 };
+      R.cam = { x: C.GRID_W * C.CELL_W / 2, y: 0, z: 0.75 };
       LH.toast('Colony restored — day ' + LH.S.day + '.', 'good');
     }
     R.clampCam(cv);
@@ -275,7 +283,11 @@
     LH.refreshPanel(LH.S);
     setSpeed(1);
     LH.lockHint('Pick a module on the left, then click to build. <b>Right-drag</b> or <b>Space</b> to pan, ' +
-      '<b>scroll</b> to zoom, <b>X</b> to bulldoze, <b>?</b> for help.');
+      '<b>scroll</b> to zoom, <b>X</b> to bulldoze, <b>◈ AUTO</b> to let the colony run itself, <b>?</b> for help.');
+    var ab = document.getElementById('btn-auto');
+    if (ab) ab.classList.toggle('on', !!LH.S.auto);
+    var sb = document.getElementById('btn-sandbox');
+    if (sb) sb.classList.toggle('on', !!LH.S.sandbox);
     LH.setHint(null);
   }
 

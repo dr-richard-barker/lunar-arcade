@@ -92,7 +92,7 @@
   LH.checkPlace = function (s, mid, x, l, l2) {
     var m = LH.MOD[mid];
     if (!m) return { ok: false, reason: 'Unknown module' };
-    if (m.tier > s.tier) return { ok: false, reason: 'Locked until charter tier ' + m.tier };
+    if (!s.sandbox && m.tier > s.tier) return { ok: false, reason: 'Locked until charter tier ' + m.tier };
 
     var cells = footprint(m, x, l, l2), i, cx, cl;
     if (m.vertical && cells.length > m.span)
@@ -109,7 +109,7 @@
     if (!supported(s, m, cells))
       return { ok: false, reason: l > 0 ? 'Nothing underneath to build on' : 'Must connect to the level above' };
 
-    cost = (m.vertical ? m.cost * cells.length : m.cost) + excav;
+    cost = s.sandbox ? 0 : (m.vertical ? m.cost * cells.length : m.cost) + excav;
     if (cost > s.credits) return { ok: false, reason: 'Not enough credits (' + LH.money(cost) + ')', cost: cost, cells: cells };
     return { ok: true, cost: cost, excav: excav, cells: cells };
   };

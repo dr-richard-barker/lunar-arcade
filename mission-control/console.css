@@ -1,0 +1,184 @@
+/* ==========================================================================
+   MARE INGENII — MISSION CONTROL DOWNLINK
+   A flight-controller status board for the Lunar Arcade build programme.
+   ========================================================================== */
+
+:root{
+  --bg:#04070c;
+  --panel:#0a1018;
+  --panel2:#0e1622;
+  --line:#1a2635;
+  --line2:#243447;
+  --fg:#dde6f1;
+  --muted:#6f8098;
+  --amber:#ffc857;
+  --green:#5fd48a;
+  --cyan:#6fd6e8;
+  --red:#ff5a5a;
+  --violet:#b06be0;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:13px/1.6 var(--mono); -webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(1100px 500px at 82% -12%, rgba(111,214,232,.07) 0%, transparent 62%),
+    radial-gradient(800px 500px at 4% 108%, rgba(255,200,87,.05) 0%, transparent 60%);
+  min-height:100vh;
+}
+/* faint console scanline grid */
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px);
+}
+.wrap{max-width:1120px; margin:0 auto; padding:0 20px; position:relative; z-index:1}
+a{color:var(--cyan)}
+
+/* ---------------- masthead ---------------- */
+header.top{border-bottom:1px solid var(--line); padding:22px 0 18px}
+.mast{display:flex; align-items:center; gap:16px; flex-wrap:wrap}
+
+.patch{
+  width:52px; height:52px; border-radius:50%; flex:none; position:relative;
+  background:radial-gradient(circle at 35% 30%, #16283d 0%, #060b12 72%);
+  border:1.5px solid var(--amber); box-shadow:0 0 18px rgba(255,200,87,.18);
+}
+.patch::before{ /* horizon */
+  content:""; position:absolute; left:5px; right:5px; bottom:14px; height:1.5px;
+  background:linear-gradient(90deg,transparent,var(--amber),transparent);
+}
+.patch::after{ /* ascent trace */
+  content:""; position:absolute; left:50%; bottom:15px; width:1.5px; height:19px;
+  background:linear-gradient(180deg,var(--cyan),transparent);
+}
+
+.mast h1{
+  margin:0; font-size:19px; letter-spacing:.2em; font-weight:800; color:var(--amber);
+}
+.mast .sub{margin:2px 0 0; font-size:11px; letter-spacing:.24em; color:var(--muted)}
+.mast .spacer{flex:1}
+
+.linkstat{text-align:right; font-size:11px; letter-spacing:.12em; line-height:1.8}
+.linkstat .row{white-space:nowrap; color:var(--muted)}
+.linkstat b{color:var(--fg); font-weight:600}
+.live{display:inline-flex; align-items:center; gap:7px; color:var(--green); font-weight:700}
+.live .dot{
+  width:7px; height:7px; border-radius:50%; background:var(--green);
+  box-shadow:0 0 0 0 rgba(95,212,138,.65); animation:pulse 2s infinite;
+}
+@keyframes pulse{
+  0%{box-shadow:0 0 0 0 rgba(95,212,138,.6)}
+  70%{box-shadow:0 0 0 8px rgba(95,212,138,0)}
+  100%{box-shadow:0 0 0 0 rgba(95,212,138,0)}
+}
+
+/* ---------------- section headings ---------------- */
+h2.sec{
+  font-size:11px; letter-spacing:.3em; color:var(--muted); font-weight:700;
+  text-transform:uppercase; margin:34px 0 14px;
+  display:flex; align-items:center; gap:12px;
+}
+h2.sec::after{content:""; flex:1; height:1px; background:var(--line)}
+
+/* ---------------- summary tiles ---------------- */
+.tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:12px}
+.tile{
+  border:1px solid var(--line); border-radius:9px; padding:15px 16px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+}
+.tile .k{font-size:10px; letter-spacing:.2em; color:var(--muted); text-transform:uppercase}
+.tile .v{font-size:29px; font-weight:800; line-height:1.25; color:var(--amber); letter-spacing:-.01em}
+.tile .v small{font-size:13px; color:var(--muted); font-weight:600; letter-spacing:.06em}
+.tile .n{font-size:10.5px; color:var(--muted); letter-spacing:.05em}
+.tile.c .v{color:var(--cyan)} .tile.g .v{color:var(--green)}
+
+/* ---------------- site panels ---------------- */
+.site{
+  border:1px solid var(--line); border-radius:11px; margin-bottom:14px; overflow:hidden;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+}
+.site-head{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:14px 18px; border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.014);
+}
+.desig{font-size:10px; letter-spacing:.22em; color:var(--muted)}
+.site-head h3{margin:1px 0 0; font-size:16.5px; letter-spacing:.03em; color:var(--fg); font-weight:700}
+.site-head .spacer{flex:1}
+
+.chip{
+  font-size:10px; font-weight:700; letter-spacing:.16em; padding:6px 12px;
+  border-radius:20px; border:1px solid; white-space:nowrap;
+}
+.chip.op{color:var(--green); border-color:rgba(95,212,138,.42); background:rgba(95,212,138,.08)}
+.chip.bu{color:var(--amber); border-color:rgba(255,200,87,.42); background:rgba(255,200,87,.08)}
+.chip.sv{color:var(--muted); border-color:var(--line2); background:rgba(255,255,255,.02)}
+
+.site-body{padding:16px 18px 18px; display:grid; grid-template-columns:1.25fr 1fr; gap:22px 30px}
+.site-body p{margin:0 0 12px; color:#9fb0c4; font-size:12.5px; line-height:1.75}
+.site-body p .hl{color:var(--amber)}
+
+/* readiness bars */
+.sys{margin:0; padding:0; list-style:none}
+.sys li{margin:0 0 9px}
+.sys .lab{display:flex; justify-content:space-between; font-size:10.5px; letter-spacing:.1em; color:var(--muted); margin-bottom:4px}
+.sys .lab b{color:var(--fg); font-weight:600}
+.track{height:6px; border-radius:3px; background:#0a0f16; border:1px solid var(--line); overflow:hidden}
+.track i{display:block; height:100%; width:0; background:var(--green); transition:width 1.1s cubic-bezier(.22,.8,.28,1)}
+.track.am i{background:var(--amber)}
+.track.cy i{background:var(--cyan)}
+.track.mu i{background:#39485c}
+
+/* telemetry readout table */
+.tele{border-top:1px dashed var(--line2); margin-top:6px; padding-top:12px}
+.tele dl{display:grid; grid-template-columns:auto auto; gap:5px 14px; margin:0; font-size:11.5px}
+.tele dt{color:var(--muted); letter-spacing:.08em}
+.tele dd{margin:0; text-align:right; color:var(--fg); font-weight:600}
+.tele dd.g{color:var(--green)} .tele dd.c{color:var(--cyan)} .tele dd.a{color:var(--amber)}
+
+.actions{margin-top:14px; display:flex; gap:9px; flex-wrap:wrap}
+.act{
+  font:700 11px/1 var(--mono); letter-spacing:.14em; text-decoration:none;
+  color:var(--amber); border:1px solid rgba(255,200,87,.38); border-radius:6px;
+  padding:10px 15px; background:#181307; transition:.15s;
+}
+.act:hover{box-shadow:0 0 16px rgba(255,200,87,.16)}
+.act.off{color:var(--muted); border-color:var(--line2); background:transparent; cursor:not-allowed}
+
+/* ---------------- downlink log ---------------- */
+.log{
+  border:1px solid var(--line); border-radius:11px; background:#060b11;
+  padding:14px 0; max-height:330px; overflow-y:auto;
+}
+.log .ln{
+  display:grid; grid-template-columns:auto auto 1fr; gap:14px;
+  padding:4px 18px; font-size:11.5px; line-height:1.7;
+  border-left:2px solid transparent;
+}
+.log .ln:hover{background:rgba(255,255,255,.02)}
+.log .ts{color:#4d5f76; white-space:nowrap}
+.log .src{color:var(--cyan); white-space:nowrap; letter-spacing:.06em}
+.log .msg{color:#a7b6c9}
+.log .ln.ok  {border-left-color:var(--green)}   .log .ln.ok  .msg{color:#bfe6cd}
+.log .ln.warn{border-left-color:var(--amber)}   .log .ln.warn .msg{color:#f0dcae}
+.log .ln.crit{border-left-color:var(--red)}     .log .ln.crit .msg{color:#f3c0c0}
+.log .ln.src2 .src{color:var(--violet)}
+.log .ln.src3 .src{color:var(--amber)}
+.cursor{display:inline-block; width:7px; height:12px; background:var(--green); vertical-align:-2px; animation:blink 1.1s steps(2) infinite}
+@keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+
+/* ---------------- footer ---------------- */
+footer.end{
+  margin:30px 0 44px; padding-top:16px; border-top:1px solid var(--line);
+  color:var(--muted); font-size:11px; line-height:1.9;
+}
+footer.end .stamp{letter-spacing:.2em; color:#3f4f63}
+
+@media (max-width:780px){
+  .site-body{grid-template-columns:1fr; gap:16px}
+  .linkstat{text-align:left}
+  .log .ln{grid-template-columns:auto 1fr; gap:4px 10px}
+  .log .ts{grid-column:1/-1}
+}

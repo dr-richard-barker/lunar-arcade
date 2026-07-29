@@ -7,8 +7,8 @@ LH.C = {
   GRID_W: 140,          // columns
   MAX_UP: 26,           // buildable levels above the surface (0 = surface deck)
   MAX_DOWN: 24,         // excavatable levels below the surface
-  CELL_W: 14,
-  CELL_H: 26,
+  CELL_W: 22,
+  CELL_H: 34,
 
   START_CREDITS: 200000,
 

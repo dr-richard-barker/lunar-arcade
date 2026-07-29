@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mission Control — Mare Ingenii Autonomous Mining Program</title>
+<meta name="description" content="Flight-controller status board for the Lunar Arcade build programme: site readiness, telemetry and the downlink log from the automated mining team.">
+<link rel="stylesheet" href="console.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap mast">
+    <div class="patch" aria-hidden="true"></div>
+    <div>
+      <h1>MISSION CONTROL</h1>
+      <p class="sub">MARE INGENII · AUTONOMOUS MINING PROGRAM</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="linkstat">
+      <div class="row"><span class="live"><span class="dot"></span>DOWNLINK ACTIVE</span></div>
+      <div class="row">GROUND TIME <b id="utc">--:--:--</b> UTC</div>
+      <div class="row">ONE-WAY LIGHT TIME <b>1.28 s</b> · LUNAR PHASE <b id="phase">—</b></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <h2 class="sec">Program summary</h2>
+  <div class="tiles">
+    <div class="tile g">
+      <div class="k">Sites operational</div>
+      <div class="v" data-count="2">0<small> / 3</small></div>
+      <div class="n">One site not yet broken ground</div>
+    </div>
+    <div class="tile">
+      <div class="k">Claim surveyed</div>
+      <div class="v" data-count="18304">0</div>
+      <div class="n">cells · 176 × 104 at 16 px</div>
+    </div>
+    <div class="tile c">
+      <div class="k">Autonomy</div>
+      <div class="v" data-count="100">0<small>%</small></div>
+      <div class="n">BORE-1 completes contracts uncrewed</div>
+    </div>
+    <div class="tile">
+      <div class="k">Console load</div>
+      <div class="v" data-count="5.2" data-dec="1">0<small> ms</small></div>
+      <div class="n">per frame at 8× · 16.7 ms budget</div>
+    </div>
+  </div>
+
+  <h2 class="sec">Site status</h2>
+
+  <!-- ============================ SITE 01 ============================ -->
+  <article class="site">
+    <div class="site-head">
+      <div>
+        <div class="desig">SITE 01 · EXTRACTION</div>
+        <h3>BORE-1 &mdash; The Boring Mining Game</h3>
+      </div>
+      <div class="spacer"></div>
+      <span class="chip op">OPERATIONAL</span>
+    </div>
+    <div class="site-body">
+      <div>
+        <p>Swarm extraction is nominal. Drones prospect on an ore-scent field that propagates
+          through rock, bore toward what they can smell, and reinforce the haul route home on the
+          return leg, so a paying seam turns itself into a highway. The surface plant has been
+          cleared for <span class="hl">six build tiers</span> and steps up a module each time
+          cumulative delivered tonnage crosses a threshold; once the pad is commissioned it flies
+          surplus ore to Earth orbit on a cargo stack.</p>
+        <p>The onboard agent has flown the full contract unaided on all three difficulty settings.
+          Rival operator <b style="color:var(--red)">HELIOS EXTRACTION</b> remains active on the
+          far side of the mare and continues to raid.</p>
+        <div class="actions">
+          <a class="act" href="../games/boring-mining/">OPEN SITE FEED ►</a>
+        </div>
+      </div>
+      <div>
+        <ul class="sys">
+          <li>
+            <div class="lab"><span>SWARM NAVIGATION</span><b>NOMINAL</b></div>
+            <div class="track"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>SCENT / TRAIL FIELDS</span><b>NOMINAL</b></div>
+            <div class="track"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>PLANT BUILD-OUT</span><b>TIER 5 REACHED</b></div>
+            <div class="track am"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>CARGO LAUNCH</span><b>COMMISSIONED</b></div>
+            <div class="track cy"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>AUTONOMOUS PILOT</span><b>3 / 3 CONTRACTS</b></div>
+            <div class="track"><i data-w="100"></i></div>
+          </li>
+        </ul>
+        <div class="tele">
+          <dl>
+            <dt>Ore grade across claim</dt><dd class="a">4.9 %</dd>
+            <dt>Volatile (ice) grade</dt><dd class="c">5.0 %</dd>
+            <dt>Basalt / lava tube</dt><dd>24.2 % / 3.0 %</dd>
+            <dt>Best contract time</dt><dd class="g">9 min 12 s</dd>
+            <dt>Tonnage landed, typical run</dt><dd>~760 t</dd>
+            <dt>Shipped to Earth, typical run</dt><dd class="g">~135 t</dd>
+            <dt>Peak swarm size</dt><dd>35 drones</dd>
+            <dt>Sim rate range</dt><dd>0.25× – 8×</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================ SITE 02 ============================ -->
+  <article class="site">
+    <div class="site-head">
+      <div>
+        <div class="desig">SITE 02 · HABITATION</div>
+        <h3>HABITAT ONE &mdash; Lunar Habitat</h3>
+      </div>
+      <div class="spacer"></div>
+      <span class="chip op">OPERATIONAL</span>
+    </div>
+    <div class="site-body">
+      <div>
+        <p>Vertical construction is certified in both directions: <span class="hl">26 levels up</span>
+          for sunlight, comms and observation, <span class="hl">24 levels down</span> where the rock
+          itself is the radiation shielding. Excavation is charged per cell and gets dearer with
+          depth, so the buried levels have to earn their place.</p>
+        <p>Crew routing is solved from the surface airlocks each tick — long commutes wreck morale
+          and a disconnected module simply does not run. The site carries a full 28-day power cycle:
+          a fortnight of solar surplus, then a fortnight on batteries, RTGs and eventually buried
+          fission.</p>
+        <div class="actions">
+          <a class="act" href="../games/lunar-habitat/">OPEN SITE FEED ►</a>
+        </div>
+      </div>
+      <div>
+        <ul class="sys">
+          <li>
+            <div class="lab"><span>STRUCTURE / EXCAVATION</span><b>NOMINAL</b></div>
+            <div class="track"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>TRANSIT SOLVER</span><b>NOMINAL</b></div>
+            <div class="track"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>POWER — LUNAR NIGHT</span><b>CARRIED</b></div>
+            <div class="track am"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>RADIATION SHIELDING</span><b>DEPTH + CAPS</b></div>
+            <div class="track cy"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>CHARTER PROGRESSION</span><b>6 TIERS</b></div>
+            <div class="track"><i data-w="100"></i></div>
+          </li>
+        </ul>
+        <div class="tele">
+          <dl>
+            <dt>Build envelope</dt><dd>+26 / &minus;24 levels</dd>
+            <dt>Module catalogue</dt><dd class="a">33 types</dd>
+            <dt>Charter tiers</dt><dd>Outpost → Capital</dd>
+            <dt>Power cycle</dt><dd class="c">28 days</dd>
+            <dt>Hazards modelled</dt><dd>4 classes</dd>
+            <dt>Site record</dt><dd>autosaved, 90 s</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================ SITE 03 ============================ -->
+  <article class="site">
+    <div class="site-head">
+      <div>
+        <div class="desig">SITE 03 · AGRICULTURE</div>
+        <h3>REGOLITH FARM</h3>
+      </div>
+      <div class="spacer"></div>
+      <span class="chip sv">SURVEY ONLY</span>
+    </div>
+    <div class="site-body">
+      <div>
+        <p>No ground broken. The site is specified but unbuilt: a sealed greenhouse on the mare
+          floor, trading light hours against power, water against recycling losses, and crop choice
+          against a manifest that only arrives every fourteen days.</p>
+        <p class="dim" style="color:var(--muted)">Regolith is not soil until you make it soil.
+          Awaiting programme authorisation.</p>
+        <div class="actions">
+          <span class="act off">NO SITE FEED</span>
+        </div>
+      </div>
+      <div>
+        <ul class="sys">
+          <li>
+            <div class="lab"><span>SITE SURVEY</span><b>COMPLETE</b></div>
+            <div class="track"><i data-w="100"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>GREENHOUSE STRUCTURE</span><b>NOT STARTED</b></div>
+            <div class="track mu"><i data-w="0"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>WATER LOOP</span><b>NOT STARTED</b></div>
+            <div class="track mu"><i data-w="0"></i></div>
+          </li>
+          <li>
+            <div class="lab"><span>CROP MODEL</span><b>NOT STARTED</b></div>
+            <div class="track mu"><i data-w="0"></i></div>
+          </li>
+        </ul>
+        <div class="tele">
+          <dl>
+            <dt>Status</dt><dd>specified, unbuilt</dd>
+            <dt>Shipping window</dt><dd class="c">14 days</dd>
+            <dt>Programme slot</dt><dd>3 of 3</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <h2 class="sec">Downlink log</h2>
+  <div class="log" id="log"></div>
+
+</main>
+
+<footer class="wrap end">
+  <p class="stamp">TRANSMISSION ENDS · MARE INGENII · AUTONOMOUS MINING PROGRAM</p>
+  <p>Status board for the <a href="../">Lunar Arcade</a> build programme, written in flight-controller
+    voice. Every figure quoted above is measured from the games themselves — contract times and
+    tonnages come from headless runs of the autonomous pilot, and the grade percentages are averaged
+    over six generated claims. The mining team is, regrettably, fictional.</p>
+</footer>
+
+<script>
+/* ---- ground clock + real lunar phase ---- */
+const SYNODIC = 29.530588853;
+const NEW_MOON = Date.UTC(2000, 0, 6, 18, 14) / 86400000;   // days since epoch
+function lunarPhase(now) {
+  const days = now.getTime() / 86400000;
+  let age = (days - NEW_MOON) % SYNODIC;
+  if (age < 0) age += SYNODIC;
+  const frac = age / SYNODIC;
+  const names = ['NEW', 'WAXING CRESCENT', 'FIRST QUARTER', 'WAXING GIBBOUS',
+                 'FULL', 'WANING GIBBOUS', 'LAST QUARTER', 'WANING CRESCENT'];
+  const name = names[Math.floor(frac * 8 + 0.5) % 8];
+  const illum = Math.round((1 - Math.cos(frac * 2 * Math.PI)) / 2 * 100);
+  return name + ' ' + illum + '%';
+}
+function tick() {
+  const n = new Date();
+  document.getElementById('utc').textContent = n.toISOString().slice(11, 19);
+  document.getElementById('phase').textContent = lunarPhase(n);
+}
+tick(); setInterval(tick, 1000);
+
+/* ---- animate readiness bars + summary counters into place ---- */
+addEventListener('load', () => {
+  setTimeout(() => {
+    document.querySelectorAll('.track i').forEach((el, k) => {
+      setTimeout(() => { el.style.width = el.dataset.w + '%'; }, k * 85);
+    });
+  }, 180);
+
+  document.querySelectorAll('.tile .v').forEach(el => {
+    const target = parseFloat(el.dataset.count), dec = +(el.dataset.dec || 0);
+    const suffix = el.querySelector('small');
+    const tail = suffix ? suffix.outerHTML : '';
+    const t0 = performance.now(), dur = 1100;
+    const fmt = v => v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    (function step(t) {
+      const p = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.innerHTML = fmt(target * eased) + tail;
+      if (p < 1) requestAnimationFrame(step);
+      else el.innerHTML = fmt(target) + tail;
+    })(t0);
+  });
+});
+
+/* ---- downlink log: the team reporting home ---- */
+const LOG = [
+  ['BORE-1',  'ok',   'Swarm deployed to Mare Ingenii. Twelve units on the claim, fabricator hot.'],
+  ['BORE-1',  '',     'Ore-scent field converged. Prospecting drones tracking seams through 4 m of basalt.'],
+  ['SURVEY',  '',     'Claim assay returns 4.9% ore grade, 5.0% volatiles, 3.0% open lava tube.'],
+  ['BORE-1',  'warn', 'Miners wedging on diagonal cuts. Bore pattern restricted to orthogonal. Resolved.'],
+  ['BORE-1',  'ok',   'Haul trails self-reinforcing. First seam promoted to primary route.'],
+  ['HELIOS',  'crit', 'Hostile drones inbound on the fabricator. Alarm recruitment failed to reach patrol.'],
+  ['BORE-1',  'warn', 'Guard recall issued colony-wide. Raid repelled, three hostiles down.'],
+  ['BORE-1',  'ok',   'Cumulative tonnage 70 t. Plant tier 1: launch pad commissioned.'],
+  ['PAD-A',   'ok',   'CARGO LAUNCH — 65 t of ilmenite away to Earth orbit. Stack nominal.'],
+  ['BORE-1',  '',     'Plant tier 3: high-gain dish and volatile tanks online.'],
+  ['AUTO-01', 'ok',   'Autonomous pilot assumed control of DRONE-01. Prospecting.'],
+  ['AUTO-01', '',     'Guard complement at 8. Rally beacon set on the Helios fabricator. Siege begun.'],
+  ['AUTO-01', 'ok',   'HELIOS FABRICATOR BREACHED. Contract closed at 9 min 12 s. Seam secured.'],
+  ['HAB-1',   'ok',   'Habitat One certified. Envelope +26 / -24 levels, 33 module types released.'],
+  ['HAB-1',   '',     'Transit solver routing all crew from surface airlocks. No orphaned modules.'],
+  ['HAB-1',   'warn', 'Solar particle event forecast. Two-day warning issued, crew under shield caps.'],
+  ['HAB-1',   'ok',   'Lunar night survived on batteries and RTGs. Charter advanced.'],
+  ['FARM-1',  '',     'Site 03 survey complete. Greenhouse unbuilt — awaiting programme authorisation.'],
+  ['CTRL',    'ok',   'Two of three sites operational. Program nominal. Standing by.'],
+];
+const logEl = document.getElementById('log');
+let li = 0;
+function emit() {
+  if (li >= LOG.length) { logEl.insertAdjacentHTML('beforeend',
+    '<div class="ln"><span class="ts"></span><span class="src"></span><span class="msg"><span class="cursor"></span></span></div>');
+    logEl.scrollTop = logEl.scrollHeight; return; }
+  const [src, lvl, msg] = LOG[li];
+  // timestamps count backwards from now, one per mission minute
+  const t = new Date(Date.now() - (LOG.length - li) * 61000);
+  const extra = src === 'HELIOS' ? ' src2' : src.startsWith('AUTO') ? ' src3' : '';
+  logEl.insertAdjacentHTML('beforeend',
+    '<div class="ln ' + lvl + extra + '">' +
+      '<span class="ts">' + t.toISOString().slice(11, 19) + '</span>' +
+      '<span class="src">' + src + '</span>' +
+      '<span class="msg">' + msg + '</span></div>');
+  logEl.scrollTop = logEl.scrollHeight;
+  li++;
+  setTimeout(emit, 260);
+}
+setTimeout(emit, 500);
+</script>
+
+</body>
+</html>

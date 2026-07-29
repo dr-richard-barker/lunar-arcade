@@ -1,17 +1,18 @@
 /* ==========================================================================
    THE BORING MINING GAME
-   An original lunar colony sim in the classic colony-sim tradition:
-   you pilot one unit of a swarm, the swarm navigates by evaporating scent
-   trails, and a rival colony is doing the same thing to the same rock.
+   A lunar ISRU drone-swarm sim. You pilot one drone of a mining swarm; the
+   swarm itself navigates by evaporating scent fields, the surface plant builds
+   itself out as tonnage lands, and a rival extraction colony is working the
+   same rock from the far side of the mare.
 
    No assets, code or data from any commercial game are used here.
    ========================================================================== */
 'use strict';
 
 /* ----------------------------------------------------------------- config */
-const MW = 160, MH = 96, TS = 12;             // map tiles + tile size (px)
+const MW = 176, MH = 104, TS = 16;            // map tiles + tile size (px)
 const WW = MW * TS, WH = MH * TS;             // world size in px
-const VW = 960, VH = 540;                     // viewport
+const VW = 1280, VH = 720;                    // viewport (backing store)
 const N = MW * MH;
 
 const VAC = 0, REG = 1, BAS = 2, ORE = 3, ICE = 4, TUN = 5, HUB = 6, RHUB = 7, BED = 8;
@@ -29,8 +30,8 @@ const DIFF = [
 ];
 
 const COST = {
-  miner: { ore: 16, ice: 7,  pwr: 9  },
-  guard: { ore: 26, ice: 11, pwr: 15 },
+  miner: { ore: 12, ice: 6,  pwr: 9  },
+  guard: { ore: 20, ice: 10, pwr: 15 },
 };
 
 /* ------------------------------------------------------------------ state */
@@ -41,7 +42,7 @@ const alarm = [null, null];          // "fighting here" / rally beacons
 const home  = [null, null];          // BFS distance to own hub through tunnels
 let fieldTmp;
 
-let drones, crawlers, parts, colonies, player, cam, clock, running, paused;
+let drones, crawlers, parts, ships, colonies, player, cam, clock, running, paused;
 let over = false, overWin = false;
 let diff = 0, muted = false, showBeacons = false;
 let frame = 0, navDirty = true, navTimer = 0;
@@ -118,6 +119,7 @@ const sfx = {
   die:     () => beep(90, 0.3, 'sawtooth', 0.07),
   win:     () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.22, 'square', 0.06), i * 130)),
   lose:    () => [400, 320, 240, 150].forEach((f, i) => setTimeout(() => beep(f, 0.3, 'sawtooth', 0.06), i * 160)),
+  launch:  () => { beep(70, 1.1, 'sawtooth', 0.05); setTimeout(() => beep(150, 0.9, 'square', 0.03), 120); },
 };
 
 /* -------------------------------------------------------------- world gen */
@@ -129,7 +131,7 @@ function generate() {
 
   const surf = new Int16Array(MW);
   for (let x = 0; x < MW; x++) {
-    surf[x] = Math.round(19 + noise2(x, 0, 30, 11) * 3.4 + noise2(x, 0, 8, 12) * 1.3);
+    surf[x] = Math.round(22 + noise2(x, 0, 30, 11) * 3.6 + noise2(x, 0, 8, 12) * 1.4);
   }
 
   for (let y = 0; y < MH; y++) {
@@ -150,7 +152,7 @@ function generate() {
   }
 
   // hubs, one per colony, with a chamber and a surface shaft
-  const px = 20, ex = MW - 21;
+  const px = 22, ex = MW - 23;
   colonies = [
     makeColony(PLAYER, px, surf[px] + 7, HUB),
     makeColony(HELIOS, ex, surf[ex] + 7, RHUB),
@@ -172,6 +174,7 @@ function makeColony(id, tx, ty, tile) {
     printCd: 0, raidCd: d.foeRaid * 0.6,
     auto: id === HELIOS, mined: 0, printed: 0, lost: 0,
     assaultOn: false, underAttack: 0, warnCd: 0, idleCd: 25,
+    shipped: 0, pendingShip: 0, launchCd: 40, tier: 0,
   };
 }
 
@@ -341,13 +344,13 @@ function bore(tx, ty, work, colId, taker, hubFactor) {
       for (let x = c.tx - 5; x <= c.tx + 5; x++)
         if (inb(x, y) && !SOLID[map[idx(x, y)]])
           f[idx(x, y)] = Math.min(3, f[idx(x, y)] + work * 0.030);
-    if (Math.random() < 0.25) puff(tx * TS + 6, ty * TS + 6, '#ff8a5a', 1);
+    if (Math.random() < 0.25) puff(tx * TS + TS / 2, ty * TS + TS / 2, '#ff8a5a', 1);
     return false;
   }
   if (!SOLID[t] || t === BED) return false;
 
   dmg[i] += work;
-  if (Math.random() < 0.2) puff(tx * TS + rnd(2, 10), ty * TS + rnd(2, 10), t === ORE ? '#d2953f' : t === ICE ? '#6fd6e8' : '#6b6355', 1);
+  if (Math.random() < 0.2) puff(tx * TS + rnd(3, TS - 3), ty * TS + rnd(3, TS - 3), t === ORE ? '#d2953f' : t === ICE ? '#6fd6e8' : '#6b6355', 1);
   if (dmg[i] < HARD[t]) return false;
 
   // broke through — cargo is capped on the total, not per resource
@@ -361,8 +364,12 @@ function bore(tx, ty, work, colId, taker, hubFactor) {
   }
   map[i] = TUN; dmg[i] = 0;
   markTile(tx, ty);
+  if (tx > 0) markTile(tx - 1, ty);
+  if (tx < MW - 1) markTile(tx + 1, ty);
+  if (ty > 0) markTile(tx, ty - 1);
+  if (ty < MH - 1) markTile(tx, ty + 1);
   navDirty = true;
-  puff(tx * TS + 6, ty * TS + 6, t === ORE ? '#d2953f' : t === ICE ? '#6fd6e8' : '#7a7266', 7);
+  puff(tx * TS + TS / 2, ty * TS + TS / 2, t === ORE ? '#d2953f' : t === ICE ? '#6fd6e8' : '#7a7266', 7);
   return true;
 }
 
@@ -412,7 +419,7 @@ function order(caste) {
     return;
   }
   c.ore -= k.ore; c.ice -= k.ice; c.pwr -= k.pwr; c.printed++;
-  spawnDrone(PLAYER, caste, c.x + rnd(-20, 20), c.y - 18);
+  spawnDrone(PLAYER, caste, c.x + rnd(-26, 26), c.y - 24);
   sfx.print(); log('Fabricator printed a <b>' + caste + '</b>.');
 }
 
@@ -430,10 +437,12 @@ function renderLog() {
 
 /* -------------------------------------------------------------------- game */
 function startGame() {
-  drones = []; crawlers = []; parts = []; logLines = [];
+  drones = []; crawlers = []; parts = []; ships = []; logLines = [];
   clock = { t: 0, day: true, phase: DAY_LEN, elapsed: 0 };
   over = false; overWin = false; paused = false; showBeacons = false;
   frame = 0; acc = 0;
+  $('banner').classList.remove('on');
+  $('banner-title').style.color = '';
   auto.mode = 'mine'; auto.beaconCd = 0; auto.orderCd = 0; auto.sieging = false;
 
   generate();
@@ -441,7 +450,7 @@ function startGame() {
 
   for (let k = 0; k < 2; k++) {
     const c = colonies[k];
-    for (let i = 0; i < 6; i++) spawnDrone(k, i < 4 ? 'miner' : 'guard', c.x + rnd(-30, 30), c.y - 20);
+    for (let i = 0; i < 6; i++) spawnDrone(k, i < 4 ? 'miner' : 'guard', c.x + rnd(-40, 40), c.y - 26);
   }
   player = drones[0];
   player.isPlayer = true; player.cap = 4; player.hp = player.max = 150;
@@ -451,7 +460,7 @@ function startGame() {
   while (placed < nCrawl && guardTries++ < 4000) {
     const tx = 10 + (Math.random() * (MW - 20) | 0), ty = 58 + (Math.random() * (MH - 62) | 0);
     if (!inb(tx, ty) || SOLID[map[idx(tx, ty)]]) continue;
-    spawnCrawler(tx * TS + 6, ty * TS + 6); placed++;
+    spawnCrawler(tx * TS + TS / 2, ty * TS + TS / 2); placed++;
   }
 
   cam = { x: player.x - VW / 2, y: player.y - VH / 2 };
@@ -482,7 +491,8 @@ function endGame(win) {
   $('banner-title').style.color = win ? 'var(--amber)' : 'var(--red)';
   $('banner-body').innerHTML = win
     ? 'Helios Extraction has withdrawn from Mare Ingenii.<br>Ore mined: <b>' + Math.round(c.mined) +
-      '</b> &middot; drones printed: <b>' + c.printed + '</b> &middot; time: <b>' + fmt(clock.elapsed) + '</b>'
+      '</b> &middot; shipped to Earth: <b>' + Math.round(c.shipped) + ' t</b> &middot; plant tier: <b>' +
+      c.tier + '</b><br>Drones printed: <b>' + c.printed + '</b> &middot; time: <b>' + fmt(clock.elapsed) + '</b>'
     : 'The fabricator is slag. Without it there are no more drones.<br>Ore mined: <b>' +
       Math.round(c.mined) + '</b> &middot; survived: <b>' + fmt(clock.elapsed) + '</b>';
   $('btn-banner').textContent = 'PLAY AGAIN';
@@ -527,6 +537,7 @@ function update(dt) {
   for (const c of crawlers) if (c.alive) updateCrawler(c, dt);
   combat(dt);
   for (const c of colonies) updateColony(c, dt);
+  updateShips(dt);
 
   // reap
   if (frame % 30 === 0) {
@@ -572,14 +583,14 @@ function updatePlayer(dt) {
   if (ax || ay) {
     const m = Math.hypot(ax, ay);
     faceX = ax / m; faceY = ay / m;
-    p.vx += (ax / m) * 900 * dt;
-    p.vy += (ay / m) * 900 * dt;
+    p.vx += (ax / m) * 1200 * dt;
+    p.vy += (ay / m) * 1200 * dt;
   }
   const drag = Math.pow(0.0015, dt);
   p.vx *= drag; p.vy *= drag;
-  const sp = Math.hypot(p.vx, p.vy), MAXV = 165;
+  const sp = Math.hypot(p.vx, p.vy), MAXV = 220;
   if (sp > MAXV) { p.vx = p.vx / sp * MAXV; p.vy = p.vy / sp * MAXV; }
-  moveEnt(p, dt, 3.0);
+  moveEnt(p, dt, 4.0);
 
   // bore what we are facing
   p.boreTile = -1;
@@ -597,7 +608,7 @@ function updatePlayer(dt) {
     }
     if (btx >= 0) {
       p.boreTile = idx(btx, bty);
-      if (bore(btx, bty, 165 * dt, PLAYER, p, 0.22)) sfx.crack();
+      if (bore(btx, bty, 175 * dt, PLAYER, p, 0.22)) sfx.crack();
       else if (frame % 5 === 0) sfx.bore();
     }
   }
@@ -670,7 +681,7 @@ function autopilot(dt) {
     if (navHome(home[HELIOS], tx, ty, g0)) { wx = g0[0]; wy = g0[1]; }
     else { wx = Math.sign(foe.x - p.x); wy = Math.sign(foe.y - p.y); }
     // Call the guards in once we are close enough for it to mean anything.
-    if (auto.beaconCd <= 0 && Math.hypot(foe.x - p.x, foe.y - p.y) < 230) {
+    if (auto.beaconCd <= 0 && Math.hypot(foe.x - p.x, foe.y - p.y) < 300) {
       auto.beaconCd = 5;
       dropBeacon(alarm[PLAYER], 2.6, '#ff9d5a', 'Autoplay called the guards onto the fabricator.');
     }
@@ -683,7 +694,7 @@ function autopilot(dt) {
   }
 
   // same stuck-breaker the swarm uses
-  if (Math.hypot(p.vx, p.vy) < 14) p.stuck = (p.stuck || 0) + dt; else p.stuck = 0;
+  if (Math.hypot(p.vx, p.vy) < 18) p.stuck = (p.stuck || 0) + dt; else p.stuck = 0;
   if (p.stuck > 0.9) { p.stuck = 0; p.panic = 1.3; const a = Math.random() * 6.2832; p.px = Math.cos(a); p.py = Math.sin(a); }
   if (p.panic > 0) { p.panic -= dt; wx = p.px; wy = p.py; }
 
@@ -756,7 +767,7 @@ function updateDrone(d, dt) {
   // Stuck-breaker: a drone pinned against geometry commits to one random
   // heading for a moment, which puts rock in front of it and lets the bore
   // step below cut a way out.
-  if (Math.hypot(d.vx, d.vy) < 14) d.stuck += dt; else d.stuck = 0;
+  if (Math.hypot(d.vx, d.vy) < 18) d.stuck += dt; else d.stuck = 0;
   if (d.stuck > 0.9) {
     d.stuck = 0; d.panic = 1.3;
     const a = Math.random() * 6.2832;
@@ -785,13 +796,13 @@ function updateDrone(d, dt) {
     }
   }
 
-  const acc = d.caste === 'guard' ? 460 : 400;
+  const acc = d.caste === 'guard' ? 610 : 530;
   d.vx += wx * acc * dt; d.vy += wy * acc * dt;
   const drag = Math.pow(0.004, dt);
   d.vx *= drag; d.vy *= drag;
-  const sp = Math.hypot(d.vx, d.vy), MAXV = d.caste === 'guard' ? 105 : 88;
+  const sp = Math.hypot(d.vx, d.vy), MAXV = d.caste === 'guard' ? 140 : 117;
   if (sp > MAXV) { d.vx = d.vx / sp * MAXV; d.vy = d.vy / sp * MAXV; }
-  moveEnt(d, dt, 2.5);
+  moveEnt(d, dt, 3.4);
   deposit(d, dt);
 }
 
@@ -813,7 +824,11 @@ function deposit(d, dt) {
   d.hp = Math.min(d.max, d.hp + 26 * dt);
   if (d.ore + d.ice <= 0) return;
   const c = colonies[d.col];
-  c.ore += d.ore; c.ice += d.ice; c.mined += d.ore + d.ice;
+  // A third of every ore delivery is set aside for the Earth-return contract;
+  // the rest is feedstock the fabricator can actually spend.
+  const cut = Math.round(d.ore * 0.34);
+  c.pendingShip += cut;
+  c.ore += d.ore - cut; c.ice += d.ice; c.mined += d.ore + d.ice;
   if (d.isPlayer) { sfx.deposit(); log('Unloaded <b>' + d.ore + ' ore</b>, <b>' + d.ice + ' ice</b>.'); }
   d.ore = 0; d.ice = 0; d.cd = 0;
 }
@@ -833,9 +848,9 @@ function moveEnt(e, dt, r) {
   const tx = e.x / TS | 0, ty = e.y / TS | 0;
   if (inb(tx, ty)) {
     const k = 1 - Math.pow(0.015, dt);
-    if (solidPx(e.x, (ty - 1) * TS + 6) && solidPx(e.x, (ty + 1) * TS + 6))
+    if (solidPx(e.x, (ty - 1) * TS + TS / 2) && solidPx(e.x, (ty + 1) * TS + TS / 2))
       e.y = lerp(e.y, ty * TS + TS / 2, k);
-    if (solidPx((tx - 1) * TS + 6, e.y) && solidPx((tx + 1) * TS + 6, e.y))
+    if (solidPx((tx - 1) * TS + TS / 2, e.y) && solidPx((tx + 1) * TS + TS / 2, e.y))
       e.x = lerp(e.x, tx * TS + TS / 2, k);
   }
 
@@ -846,7 +861,7 @@ function moveEnt(e, dt, r) {
 /* ------------------------------------------------------------------ hazard */
 function updateCrawler(c, dt) {
   c.cd -= dt;
-  let target = null, bd = 150;
+  let target = null, bd = 200;
   for (const d of drones) {
     if (!d.alive) continue;
     const dist = Math.hypot(d.x - c.x, d.y - c.y);
@@ -855,12 +870,12 @@ function updateCrawler(c, dt) {
   let wx, wy;
   if (target) { wx = target.x - c.x; wy = target.y - c.y; const m = Math.hypot(wx, wy) || 1; wx /= m; wy /= m; }
   else { c.wob += dt * 0.8; wx = Math.cos(c.wob); wy = Math.sin(c.wob * 0.6) * 0.5; }
-  c.vx += wx * 260 * dt; c.vy += wy * 260 * dt;
+  c.vx += wx * 345 * dt; c.vy += wy * 345 * dt;
   const drag = Math.pow(0.004, dt);
   c.vx *= drag; c.vy *= drag;
   const sp = Math.hypot(c.vx, c.vy);
-  if (sp > 72) { c.vx = c.vx / sp * 72; c.vy = c.vy / sp * 72; }
-  moveEnt(c, dt, 4.0);
+  if (sp > 96) { c.vx = c.vx / sp * 96; c.vy = c.vy / sp * 96; }
+  moveEnt(c, dt, 5.4);
 }
 
 /* ------------------------------------------------------------------ combat */
@@ -872,14 +887,14 @@ function combat(dt) {
       const b = drones[j];
       if (!b.alive || b.col === a.col) continue;
       const dx = b.x - a.x, dy = b.y - a.y;
-      if (dx * dx + dy * dy > 196) continue;
+      if (dx * dx + dy * dy > 340) continue;
       hurt(a, (b.caste === 'guard' ? 30 : 15) * dt, b);
       hurt(b, (a.caste === 'guard' ? 30 : 15) * dt, a);
     }
     for (const c of crawlers) {
       if (!c.alive) continue;
       const dx = c.x - a.x, dy = c.y - a.y;
-      if (dx * dx + dy * dy > 260) continue;
+      if (dx * dx + dy * dy > 450) continue;
       hurt(a, 34 * dt, null);
       c.hp -= (a.caste === 'guard' ? 26 : 12) * dt;
       if (c.hp <= 0) { c.alive = false; puff(c.x, c.y, '#b06be0', 16); if (a.col === PLAYER) log('<span class="good">Tube crawler killed.</span>'); }
@@ -922,17 +937,36 @@ function updateColony(c, dt) {
     sfx.hit();
   }
 
+  // The surface plant builds itself out as cumulative tonnage lands.
+  const nt = tierOf(c);
+  if (nt > c.tier) {
+    c.tier = nt;
+    if (c.id === PLAYER)
+      log('<span class="good">Plant expanded</span> to <b>tier ' + nt + '</b> — new module online.');
+  }
+
+  // Surplus ore goes to Earth orbit. A reserve is always kept back for printing.
+  c.launchCd -= dt;
+  if (c.launchCd <= 0) {
+    if (c.pendingShip >= 15 && c.tier >= 1) {
+      const load = Math.min(70, Math.floor(c.pendingShip));
+      c.pendingShip -= load; c.shipped += load;
+      launchShip(c, load);
+      c.launchCd = 30;
+    } else c.launchCd = 6;
+  }
+
   c.printCd -= dt;
   const mine = drones.filter(d => d.alive && d.col === c.id);
   const miners = mine.filter(d => d.caste === 'miner').length;
   const guards = mine.length - miners;
 
-  if (c.auto && c.printCd <= 0 && mine.length < 46) {
+  if (c.auto && c.printCd <= 0 && mine.length < 34) {
     const want = guards * 2 < miners ? 'guard' : 'miner';
     if (affordable(c, want)) {
       const k = COST[want];
       c.ore -= k.ore; c.ice -= k.ice; c.pwr -= k.pwr; c.printed++;
-      spawnDrone(c.id, want, c.x + rnd(-20, 20), c.y - 18);
+      spawnDrone(c.id, want, c.x + rnd(-26, 26), c.y - 24);
       c.printCd = c.id === HELIOS ? 3.4 / DIFF[diff].foeRate : 3.0;
       if (c.id === PLAYER) sfx.print();
     } else c.printCd = 1.2;
@@ -981,75 +1015,136 @@ function updateColony(c, dt) {
 
 /* ------------------------------------------------------------------ render */
 const COL = {
-  [VAC]: '#05070c', [REG]: '#4a4438', [BAS]: '#2b2f36', [ORE]: '#7d5a2c',
-  [ICE]: '#2f6b7c', [TUN]: '#12161d', [HUB]: '#6b5416', [RHUB]: '#6b1f1f', [BED]: '#0a0c10',
+  [VAC]: '#04060a', [REG]: '#6a6459', [BAS]: '#3a3f47', [ORE]: '#7c6a4e',
+  [ICE]: '#3d6b78', [TUN]: '#0c1016', [HUB]: '#c2ccd8', [RHUB]: '#8f4a45', [BED]: '#12161c',
 };
 
+/* Stable per-tile hash, so rock texture never shimmers between redraws. */
+const th = i => (Math.imul(i | 0, 0x9e3779b1) >>> 24);
+
 function paintSky() {
-  const g = tctx.createLinearGradient(0, 0, 0, 24 * TS);
-  g.addColorStop(0, '#04060b'); g.addColorStop(1, '#0a0f18');
-  tctx.fillStyle = g; tctx.fillRect(0, 0, WW, 26 * TS);
-  for (let i = 0; i < 420; i++) {
-    const x = Math.random() * WW, y = Math.random() * 22 * TS;
-    const a = 0.25 + Math.random() * 0.65;
-    tctx.fillStyle = 'rgba(210,225,255,' + a.toFixed(2) + ')';
+  const g = tctx.createLinearGradient(0, 0, 0, 30 * TS);
+  g.addColorStop(0, '#020408'); g.addColorStop(1, '#080d15');
+  tctx.fillStyle = g; tctx.fillRect(0, 0, WW, 32 * TS);
+  for (let i = 0; i < 620; i++) {
+    const x = Math.random() * WW, y = Math.random() * 26 * TS;
+    const a = 0.2 + Math.random() * 0.7;
+    tctx.fillStyle = 'rgba(214,228,255,' + a.toFixed(2) + ')';
     tctx.fillRect(x | 0, y | 0, 1, 1);
+    if (a > 0.85) { tctx.globalAlpha = 0.25; tctx.fillRect((x | 0) - 1, y | 0, 3, 1); tctx.fillRect(x | 0, (y | 0) - 1, 1, 3); tctx.globalAlpha = 1; }
   }
 }
 
 function drawTile(i) {
   const x = (i % MW) * TS, y = ((i / MW) | 0) * TS, t = map[i];
-  if (t === VAC) return;                                     // sky stays painted
+  if (t === VAC) return;
+  const h = th(i);
+
+  /* ---- bored tunnel: an engineered bore, not a hole ---- */
+  if (t === TUN) {
+    tctx.fillStyle = '#0c1016'; tctx.fillRect(x, y, TS, TS);
+    tctx.fillStyle = 'rgba(140,175,215,.06)'; tctx.fillRect(x, y, TS, 1);
+    tctx.fillStyle = 'rgba(0,0,0,.5)';        tctx.fillRect(x, y + TS - 2, TS, 2);
+    if ((h & 3) === 0) {                       // occasional wall rib
+      tctx.fillStyle = 'rgba(120,170,220,.10)';
+      tctx.fillRect(x + (h & 8 ? 3 : TS - 4), y + 2, 1, TS - 4);
+    }
+    return;
+  }
+
+  /* ---- fabricator structure ---- */
+  if (t === HUB || t === RHUB) {
+    const hot = t === HUB;
+    tctx.fillStyle = hot ? '#aab6c4' : '#8f4a45';
+    tctx.fillRect(x, y, TS, TS);
+    tctx.fillStyle = 'rgba(255,255,255,.22)'; tctx.fillRect(x, y, TS, 2);
+    tctx.fillStyle = 'rgba(0,0,0,.45)';       tctx.fillRect(x, y + TS - 3, TS, 3);
+    tctx.fillStyle = hot ? 'rgba(30,44,60,.85)' : 'rgba(40,16,16,.85)';
+    tctx.fillRect(x + 2, y + 4, TS - 4, TS - 8);
+    tctx.fillStyle = hot ? '#6fd6e8' : '#ff8a7a';       // status lamp
+    if ((h & 3) === 0) tctx.fillRect(x + 4, y + 6, 2, 2);
+    // hazard chevron
+    if ((h & 7) === 1) {
+      tctx.fillStyle = 'rgba(255,200,87,.5)';
+      tctx.fillRect(x + 3, y + TS - 6, TS - 6, 1);
+    }
+    return;
+  }
+
+  /* ---- rock ----
+     Shade only at real surfaces. Outlining every tile turns a rock mass into a
+     waffle grid; lighting just the exposed faces makes it read as one body of
+     stone with a bored void cut through it. */
   tctx.fillStyle = COL[t];
   tctx.fillRect(x, y, TS, TS);
-  if (t === REG || t === BAS) {
-    tctx.fillStyle = 'rgba(255,255,255,.035)';
-    tctx.fillRect(x, y, TS, 1);
-    tctx.fillStyle = 'rgba(0,0,0,.20)';
-    tctx.fillRect(x, y + TS - 1, TS, 1);
-    if (((i * 2654435761) >>> 26) < 8) {
-      tctx.fillStyle = 'rgba(255,255,255,.05)';
-      tctx.fillRect(x + 3 + (i % 4), y + 4 + (i % 3), 2, 2);
-    }
+
+  const gx = i % MW, gy = (i / MW) | 0;
+  const openU = gy > 0      && !SOLID[map[i - MW]];
+  const openD = gy < MH - 1 && !SOLID[map[i + MW]];
+  const openL = gx > 0      && !SOLID[map[i - 1]];
+  const openR = gx < MW - 1 && !SOLID[map[i + 1]];
+
+  if (openU) {                                   // sunlit / lamplit cut face
+    tctx.fillStyle = 'rgba(255,252,240,.16)'; tctx.fillRect(x, y, TS, 2);
+    tctx.fillStyle = 'rgba(255,252,240,.07)'; tctx.fillRect(x, y + 2, TS, 1);
   }
-  if (t === ORE) {
-    tctx.fillStyle = '#d2953f';
-    for (let k = 0; k < 3; k++) {
-      const ox = ((i * 7 + k * 31) % 8) + 1, oy = ((i * 13 + k * 17) % 8) + 1;
+  if (openD) { tctx.fillStyle = 'rgba(0,0,0,.45)'; tctx.fillRect(x, y + TS - 2, TS, 2); }
+  if (openL) { tctx.fillStyle = 'rgba(0,0,0,.22)'; tctx.fillRect(x, y, 2, TS); }
+  if (openR) { tctx.fillStyle = 'rgba(0,0,0,.22)'; tctx.fillRect(x + TS - 2, y, 2, TS); }
+
+  // regolith grain / basalt fracture
+  if (t === REG) {
+    tctx.fillStyle = 'rgba(255,255,255,.045)';
+    tctx.fillRect(x + (h % 11) + 1, y + ((h >> 3) % 11) + 2, 2, 1);
+    tctx.fillStyle = 'rgba(0,0,0,.14)';
+    tctx.fillRect(x + ((h >> 2) % 12), y + ((h >> 5) % 12), 2, 2);
+  } else if (t === BAS) {
+    tctx.fillStyle = 'rgba(0,0,0,.30)';
+    tctx.fillRect(x + ((h >> 1) % 10) + 2, y + 1, 1, TS - 2);
+    tctx.fillStyle = 'rgba(180,205,230,.05)';
+    tctx.fillRect(x + 1, y + ((h >> 4) % 12) + 1, TS - 2, 1);
+  } else if (t === ORE) {
+    // ilmenite: dark host rock carrying bright metallic flecks
+    tctx.fillStyle = 'rgba(0,0,0,.22)'; tctx.fillRect(x + 1, y + 1, TS - 2, TS - 2);
+    for (let k = 0; k < 5; k++) {
+      const ox = ((h * (k + 3)) % (TS - 5)) + 2, oy = ((h * (k + 7) >> 2) % (TS - 5)) + 2;
+      tctx.fillStyle = k & 1 ? '#e8bb63' : '#b98a4a';
       tctx.fillRect(x + ox, y + oy, 2, 2);
+      tctx.fillStyle = 'rgba(255,240,200,.55)';
+      tctx.fillRect(x + ox, y + oy, 1, 1);
     }
-  }
-  if (t === ICE) {
-    tctx.fillStyle = '#8fe6f5';
-    tctx.fillRect(x + 2, y + 3, 3, 2); tctx.fillRect(x + 6, y + 7, 3, 2);
-  }
-  if (t === HUB || t === RHUB) {
-    tctx.fillStyle = t === HUB ? '#ffc857' : '#ff5a5a';
-    tctx.fillRect(x + 1, y + 1, TS - 2, 2);
-    tctx.fillStyle = 'rgba(0,0,0,.35)';
-    tctx.fillRect(x + 2, y + 5, TS - 4, TS - 7);
-  }
-  if (t === TUN) {
-    tctx.fillStyle = 'rgba(0,0,0,.35)';
-    tctx.fillRect(x, y, TS, 2);
+  } else if (t === ICE) {
+    tctx.fillStyle = 'rgba(140,230,250,.16)'; tctx.fillRect(x + 1, y + 1, TS - 2, TS - 2);
+    tctx.fillStyle = '#a8ecf8';
+    tctx.fillRect(x + 3, y + 4, 4, 2); tctx.fillRect(x + 8, y + 9, 4, 2);
+    tctx.fillStyle = 'rgba(255,255,255,.75)';
+    tctx.fillRect(x + 3, y + 4, 1, 1); tctx.fillRect(x + 8, y + 9, 1, 1);
+  } else if (t === BED) {
+    tctx.fillStyle = 'rgba(0,0,0,.5)';
+    tctx.fillRect(x + 2, y + 2, TS - 4, TS - 4);
   }
 }
 
 function flushTiles() {
   if (!dirtyList.length) return;
   for (const i of dirtyList) {
-    if (map[i] === VAC) { /* keep the painted sky */ }
-    else { drawTile(i); }
+    if (map[i] !== VAC) {
+      const x = (i % MW) * TS, y = ((i / MW) | 0) * TS;
+      tctx.clearRect(x, y, TS, TS);
+      tctx.fillStyle = '#04060a'; tctx.fillRect(x, y, TS, TS);
+      drawTile(i);
+    }
     tileDirty[i] = 0;
   }
   dirtyList.length = 0;
 }
 
+/* ------------------------------------------------------- the main draw pass */
 function render() {
   flushTiles();
   const cx = Math.round(cam.x), cy = Math.round(cam.y);
 
-  vctx.fillStyle = '#05070c';
+  vctx.fillStyle = '#04060a';
   vctx.fillRect(0, 0, VW, VH);
   vctx.drawImage(terrain, cx, cy, VW, VH, 0, 0, VW, VH);
 
@@ -1058,18 +1153,25 @@ function render() {
 
   drawSky(cx, cy);
   if (showBeacons) drawBeacons(cx, cy);
-  drawHubs();
+  for (const c of colonies) drawBase(c);
+  drawShips();
 
-  // bore reticle
   if (player.boreTile >= 0) {
     const bx = (player.boreTile % MW) * TS, by = ((player.boreTile / MW) | 0) * TS;
     const t = map[player.boreTile];
     const prog = t === HUB || t === RHUB ? 0 : clamp(dmg[player.boreTile] / (HARD[t] || 1), 0, 1);
-    vctx.strokeStyle = 'rgba(255,200,87,.85)'; vctx.lineWidth = 1;
-    vctx.strokeRect(bx + .5, by + .5, TS - 1, TS - 1);
-    vctx.fillStyle = 'rgba(255,200,87,.30)';
+    vctx.fillStyle = 'rgba(255,200,87,.26)';
     vctx.fillRect(bx, by + TS - TS * prog, TS, TS * prog);
-    vctx.strokeStyle = 'rgba(255,200,87,.55)';
+    vctx.strokeStyle = 'rgba(255,200,87,.9)'; vctx.lineWidth = 1;
+    // engineering-style corner ticks rather than a plain box
+    const L = 5;
+    vctx.beginPath();
+    vctx.moveTo(bx + .5, by + L); vctx.lineTo(bx + .5, by + .5); vctx.lineTo(bx + L, by + .5);
+    vctx.moveTo(bx + TS - L, by + .5); vctx.lineTo(bx + TS - .5, by + .5); vctx.lineTo(bx + TS - .5, by + L);
+    vctx.moveTo(bx + .5, by + TS - L); vctx.lineTo(bx + .5, by + TS - .5); vctx.lineTo(bx + L, by + TS - .5);
+    vctx.moveTo(bx + TS - L, by + TS - .5); vctx.lineTo(bx + TS - .5, by + TS - .5); vctx.lineTo(bx + TS - .5, by + TS - L);
+    vctx.stroke();
+    vctx.strokeStyle = 'rgba(255,200,87,.35)';
     vctx.beginPath(); vctx.moveTo(player.x, player.y); vctx.lineTo(bx + TS / 2, by + TS / 2); vctx.stroke();
   }
 
@@ -1078,37 +1180,30 @@ function render() {
   drawDrone(player, true);
 
   for (const p of parts) {
-    const a = 1 - p.age / p.life;
+    vctx.globalAlpha = (1 - p.age / p.life) * 0.85;
     vctx.fillStyle = p.c;
-    vctx.globalAlpha = a * 0.85;
     vctx.fillRect(p.x - 1, p.y - 1, 3, 3);
   }
   vctx.globalAlpha = 1;
   vctx.restore();
 
-  // night tint over the surface band
-  if (!clock.day) {
-    vctx.fillStyle = 'rgba(10,20,50,.20)';
-    vctx.fillRect(0, 0, VW, VH);
-  }
-  // vignette
-  const vg = vctx.createRadialGradient(VW / 2, VH / 2, VH * 0.35, VW / 2, VH / 2, VH * 0.95);
+  if (!clock.day) { vctx.fillStyle = 'rgba(8,18,44,.22)'; vctx.fillRect(0, 0, VW, VH); }
+
+  const vg = vctx.createRadialGradient(VW / 2, VH / 2, VH * 0.38, VW / 2, VH / 2, VH * 0.98);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.5)');
   vctx.fillStyle = vg; vctx.fillRect(0, 0, VW, VH);
 
   if (auto.on) {
     const lbl = 'AUTOPLAY · ' + auto.mode.toUpperCase();
-    vctx.font = '700 11px ui-monospace,monospace';
-    const w = vctx.measureText(lbl).width + 18;
+    vctx.font = '700 12px ui-monospace,monospace';
     vctx.fillStyle = 'rgba(255,200,87,.92)';
-    vctx.fillRect(12, 12, w, 22);
-    vctx.fillStyle = '#05070c';
-    vctx.fillText(lbl, 21, 27);
+    vctx.fillRect(14, 14, vctx.measureText(lbl).width + 20, 24);
+    vctx.fillStyle = '#05070c'; vctx.fillText(lbl, 24, 30);
   }
   if (speed !== 1) {
-    vctx.font = '700 11px ui-monospace,monospace';
+    vctx.font = '700 12px ui-monospace,monospace';
     vctx.fillStyle = 'rgba(111,214,232,.9)';
-    vctx.fillText(speed + '×', 12, auto.on ? 50 : 26);
+    vctx.fillText(speed + '×', 14, auto.on ? 56 : 30);
   }
 
   if (frame % 6 === 0) drawMini();
@@ -1116,28 +1211,29 @@ function render() {
 }
 
 function drawSky(cx, cy) {
-  if (cy > 26 * TS) return;
+  if (cy > 30 * TS) return;
+
   // Earth, fixed in the lunar sky
-  const ex = 300, ey = 90;
-  vctx.save();
-  vctx.globalAlpha = 0.95;
-  const eg = vctx.createRadialGradient(ex - 8, ey - 8, 3, ex, ey, 30);
-  eg.addColorStop(0, '#8fc4ff'); eg.addColorStop(0.55, '#3f6fae'); eg.addColorStop(1, '#101c30');
+  const ex = 420, ey = 110;
+  const eg = vctx.createRadialGradient(ex - 11, ey - 11, 4, ex, ey, 38);
+  eg.addColorStop(0, '#a8d4ff'); eg.addColorStop(.5, '#3f74b4'); eg.addColorStop(1, '#0d1728');
   vctx.fillStyle = eg;
-  vctx.beginPath(); vctx.arc(ex, ey, 26, 0, 6.2832); vctx.fill();
-  vctx.fillStyle = 'rgba(120,190,140,.45)';
-  vctx.beginPath(); vctx.ellipse(ex - 6, ey + 4, 10, 6, .4, 0, 6.2832); vctx.fill();
-  vctx.restore();
+  vctx.beginPath(); vctx.arc(ex, ey, 33, 0, 6.2832); vctx.fill();
+  vctx.fillStyle = 'rgba(126,196,146,.42)';
+  vctx.beginPath(); vctx.ellipse(ex - 8, ey + 5, 13, 8, .4, 0, 6.2832); vctx.fill();
+  vctx.beginPath(); vctx.ellipse(ex + 10, ey - 9, 7, 5, -.3, 0, 6.2832); vctx.fill();
+  vctx.fillStyle = 'rgba(255,255,255,.30)';
+  vctx.beginPath(); vctx.ellipse(ex + 4, ey + 14, 11, 4, .2, 0, 6.2832); vctx.fill();
 
   // sun tracks the day phase
   const frac = clock.day ? 1 - clock.phase / DAY_LEN : -1;
   if (frac >= 0) {
-    const sx = 120 + frac * (WW - 240), sy = 150 - Math.sin(frac * Math.PI) * 95;
-    const sg = vctx.createRadialGradient(sx, sy, 2, sx, sy, 46);
-    sg.addColorStop(0, 'rgba(255,246,220,.95)'); sg.addColorStop(0.3, 'rgba(255,214,130,.35)');
+    const sx = 160 + frac * (WW - 320), sy = 185 - Math.sin(frac * Math.PI) * 120;
+    const sg = vctx.createRadialGradient(sx, sy, 3, sx, sy, 60);
+    sg.addColorStop(0, 'rgba(255,250,232,.98)'); sg.addColorStop(.28, 'rgba(255,224,150,.32)');
     sg.addColorStop(1, 'rgba(255,200,87,0)');
     vctx.fillStyle = sg;
-    vctx.beginPath(); vctx.arc(sx, sy, 46, 0, 6.2832); vctx.fill();
+    vctx.beginPath(); vctx.arc(sx, sy, 60, 0, 6.2832); vctx.fill();
   }
 }
 
@@ -1150,71 +1246,247 @@ function drawBeacons(cx, cy) {
     const tp = trail[0][i], tr = trail[1][i], ap = alarm[0][i];
     if (tp > 0.02) { vctx.fillStyle = 'rgba(255,200,87,' + Math.min(.5, tp * .32).toFixed(3) + ')'; vctx.fillRect(x * TS, y * TS, TS, TS); }
     if (tr > 0.02) { vctx.fillStyle = 'rgba(255,90,90,'  + Math.min(.5, tr * .32).toFixed(3) + ')'; vctx.fillRect(x * TS, y * TS, TS, TS); }
-    if (ap > 0.02) { vctx.fillStyle = 'rgba(255,140,60,' + Math.min(.5, ap * .35).toFixed(3) + ')'; vctx.fillRect(x * TS + 3, y * TS + 3, TS - 6, TS - 6); }
+    if (ap > 0.02) { vctx.fillStyle = 'rgba(255,140,60,' + Math.min(.5, ap * .35).toFixed(3) + ')'; vctx.fillRect(x * TS + 4, y * TS + 4, TS - 8, TS - 8); }
   }
 }
 
-function drawHubs() {
-  for (const c of colonies) {
-    const glow = c.id === PLAYER ? '255,200,87' : '255,90,90';
-    const g = vctx.createRadialGradient(c.x, c.y + 12, 4, c.x, c.y + 12, 70);
-    g.addColorStop(0, 'rgba(' + glow + ',.28)'); g.addColorStop(1, 'rgba(' + glow + ',0)');
-    vctx.fillStyle = g;
-    vctx.beginPath(); vctx.arc(c.x, c.y + 12, 70, 0, 6.2832); vctx.fill();
+/* ==========================================================================
+   THE SURFACE PLANT
+   Every colony has an ISRU plant on the surface above its shaft. It gains a
+   module each time cumulative delivered tonnage crosses a tier threshold, so
+   a productive colony visibly builds itself out.
+   ========================================================================== */
+const TIERS = [0, 70, 170, 320, 520, 800];
+function tierOf(c) { let t = 0; for (let i = 1; i < TIERS.length; i++) if (c.mined >= TIERS[i]) t = i; return t; }
 
-    // solar array on the surface
-    const sy = c.surfY * TS;
-    vctx.fillStyle = clock.day ? 'rgba(' + glow + ',.9)' : 'rgba(' + glow + ',.35)';
-    vctx.fillRect(c.x - 26, sy - 7, 52, 3);
-    vctx.fillStyle = 'rgba(' + glow + ',.35)';
-    vctx.fillRect(c.x - 1, sy - 7, 2, 7);
+function drawBase(c) {
+  const mine = c.id === PLAYER;
+  const key = mine ? '255,200,87' : '255,90,90';
+  const sy = c.surfY * TS;                       // ground line
+  const tier = c.tier;
+  const lit = clock.day;
 
-    vctx.font = '700 9px ui-monospace,monospace';
-    vctx.fillStyle = 'rgba(' + glow + ',.85)';
-    vctx.textAlign = 'center';
-    vctx.fillText(c.id === PLAYER ? 'BORE-1' : 'HELIOS', c.x, sy - 12);
-    vctx.textAlign = 'left';
+  // buried glow so you can find the shaft from below
+  const g = vctx.createRadialGradient(c.x, c.y + TS, 6, c.x, c.y + TS, 110);
+  g.addColorStop(0, 'rgba(' + key + ',.22)'); g.addColorStop(1, 'rgba(' + key + ',0)');
+  vctx.fillStyle = g;
+  vctx.beginPath(); vctx.arc(c.x, c.y + TS, 110, 0, 6.2832); vctx.fill();
+
+  vctx.save();
+  vctx.translate(c.x, sy);
+
+  const W = 34 + tier * 7;                       // plant footprint grows with output
+
+  // --- concrete-sintered pad ---
+  vctx.fillStyle = '#4c4740';
+  vctx.fillRect(-W, -4, W * 2, 5);
+  vctx.fillStyle = 'rgba(255,255,255,.10)';
+  vctx.fillRect(-W, -4, W * 2, 1);
+
+  // --- main ISRU processing block: white NASA hardware ---
+  const bh = 16 + tier * 3;
+  vctx.fillStyle = '#cdd6e0'; vctx.fillRect(-19, -4 - bh, 38, bh);
+  vctx.fillStyle = '#9aa6b4'; vctx.fillRect(-19, -4 - bh, 38, 3);
+  vctx.fillStyle = '#2c333d'; vctx.fillRect(-15, -bh, 30, bh - 8);
+  // module seams
+  vctx.fillStyle = 'rgba(0,0,0,.30)';
+  for (let k = -12; k < 15; k += 9) vctx.fillRect(k, -4 - bh + 3, 1, bh - 3);
+  // status lamps
+  vctx.fillStyle = lit ? '#6fd6e8' : '#2c6b78';
+  vctx.fillRect(-13, -bh - 1, 3, 2); vctx.fillRect(10, -bh - 1, 3, 2);
+  // colony marking
+  vctx.fillStyle = 'rgba(' + key + ',.95)';
+  vctx.fillRect(-19, -4 - bh, 38, 1);
+  vctx.font = '700 8px ui-monospace,monospace';
+  vctx.textAlign = 'center';
+  vctx.fillText(mine ? 'BORE-1 ISRU' : 'HELIOS ISRU', 0, -8 - bh);
+
+  // --- solar arrays: one pair per tier, tilted to the sun ---
+  const panels = 1 + Math.min(3, tier);
+  for (let k = 0; k < panels; k++) {
+    const px = -W + 8 + k * 15, py = -8 - (k % 2) * 4;
+    vctx.save(); vctx.translate(px, py); vctx.rotate(-0.22);
+    vctx.fillStyle = lit ? '#2f5f96' : '#16283d';
+    vctx.fillRect(-7, -2, 14, 4);
+    vctx.strokeStyle = 'rgba(180,215,255,.45)'; vctx.lineWidth = .6;
+    vctx.beginPath(); vctx.moveTo(-7, 0); vctx.lineTo(7, 0); vctx.stroke();
+    vctx.restore();
+    vctx.fillStyle = '#8b95a3'; vctx.fillRect(px - 1, py, 2, -py - 4);
+  }
+  for (let k = 0; k < panels; k++) {
+    const px = W - 8 - k * 15, py = -8 - (k % 2) * 4;
+    vctx.save(); vctx.translate(px, py); vctx.rotate(0.22);
+    vctx.fillStyle = lit ? '#2f5f96' : '#16283d';
+    vctx.fillRect(-7, -2, 14, 4);
+    vctx.restore();
+    vctx.fillStyle = '#8b95a3'; vctx.fillRect(px - 1, py, 2, -py - 4);
+  }
+
+  // --- tier 2+: high-gain dish, pointed at Earth ---
+  if (tier >= 2) {
+    vctx.save(); vctx.translate(-W + 16, -4 - bh - 6);
+    vctx.fillStyle = '#8b95a3'; vctx.fillRect(-1, 0, 2, 7);
+    vctx.fillStyle = '#e2e8ef';
+    vctx.beginPath(); vctx.ellipse(0, -1, 6, 4, -0.5, 0, 6.2832); vctx.fill();
+    vctx.fillStyle = '#5a6472';
+    vctx.beginPath(); vctx.ellipse(0, -1, 3.4, 2.2, -0.5, 0, 6.2832); vctx.fill();
+    vctx.restore();
+  }
+  // --- tier 3+: volatile storage tanks ---
+  if (tier >= 3) {
+    for (let k = 0; k < 2; k++) {
+      const px = 24 + k * 11;
+      vctx.fillStyle = '#dfe6ee';
+      vctx.beginPath(); vctx.ellipse(px, -11, 5, 7, 0, 0, 6.2832); vctx.fill();
+      vctx.fillStyle = 'rgba(111,214,232,.55)'; vctx.fillRect(px - 5, -13, 10, 1.5);
+      vctx.fillStyle = '#8b95a3'; vctx.fillRect(px - 1, -4, 2, 4);
+    }
+  }
+  // --- tier 4+: radiator fins ---
+  if (tier >= 4) {
+    for (let k = 0; k < 3; k++) {
+      vctx.fillStyle = 'rgba(226,232,239,.85)';
+      vctx.fillRect(-30 - k * 6, -4 - bh + 4, 3, bh - 6);
+    }
+  }
+  // --- tier 5: pressurised habitat dome ---
+  if (tier >= 5) {
+    vctx.fillStyle = '#e8eef5';
+    vctx.beginPath(); vctx.arc(-W + 30, -4, 11, Math.PI, 0); vctx.fill();
+    vctx.fillStyle = 'rgba(111,214,232,.5)';
+    vctx.fillRect(-W + 26, -8, 3, 3); vctx.fillRect(-W + 32, -8, 3, 3);
+  }
+
+  // --- launch pad + gantry (from tier 1) ---
+  if (tier >= 1) {
+    const px = W - 4;
+    vctx.fillStyle = '#3d3a35'; vctx.fillRect(px - 13, -6, 26, 6);
+    vctx.fillStyle = 'rgba(255,200,87,.35)';
+    for (let k = -10; k < 11; k += 5) vctx.fillRect(px + k, -6, 2, 1);
+    vctx.fillStyle = '#8b95a3'; vctx.fillRect(px + 11, -24, 2, 18);
+    c.padX = c.x + px; c.padY = sy - 6;
+  } else { c.padX = c.x + W - 4; c.padY = sy - 4; }
+
+  vctx.textAlign = 'left';
+  vctx.restore();
+
+  // shaft lip markers
+  vctx.fillStyle = 'rgba(' + key + ',.55)';
+  vctx.fillRect(c.x - TS * 2, sy - 1, 3, 2);
+  vctx.fillRect(c.x + TS * 2 - 3, sy - 1, 3, 2);
+}
+
+/* ------------------------------------------------------- cargo to LEO/Earth */
+function launchShip(c, load) {
+  ships.push({
+    x: c.padX || c.x, y: c.padY || c.surfY * TS - 6,
+    vy: -14, age: 0, load, col: c.id, spent: false,
+  });
+  if (c.id === PLAYER) {
+    sfx.launch();
+    log('<span class="good">CARGO LAUNCH</span> — <b>' + load + ' t</b> of ore away to Earth orbit. ' +
+        'Total shipped: <b>' + Math.round(c.shipped) + ' t</b>.');
   }
 }
 
+function updateShips(dt) {
+  for (let i = ships.length - 1; i >= 0; i--) {
+    const s = ships[i];
+    s.age += dt;
+    s.vy -= 105 * dt;                                  // ascent burn
+    s.y += s.vy * dt;
+    // exhaust plume + regolith kicked off the pad
+    if (s.age < 3.2) {
+      for (let k = 0; k < 2; k++)
+        parts.push({ x: s.x + rnd(-3, 3), y: s.y + 12, vx: rnd(-70, 70), vy: rnd(30, 130),
+                     life: rnd(0.3, 0.8), age: 0, c: k ? '#ffd08a' : '#fff3d6' });
+    }
+    if (s.y < -260) ships.splice(i, 1);
+  }
+}
+
+function drawShips() {
+  for (const s of ships) {
+    const key = s.col === PLAYER ? '#ffc857' : '#ff5a5a';
+    vctx.save();
+    vctx.translate(s.x, s.y);
+    // plume
+    const pl = vctx.createLinearGradient(0, 8, 0, 40);
+    pl.addColorStop(0, 'rgba(255,240,200,.85)'); pl.addColorStop(1, 'rgba(255,150,60,0)');
+    vctx.fillStyle = pl;
+    vctx.beginPath(); vctx.moveTo(-4, 8); vctx.lineTo(4, 8); vctx.lineTo(0, 42); vctx.closePath(); vctx.fill();
+    // vehicle
+    vctx.fillStyle = '#e6ecf3';
+    vctx.beginPath();
+    vctx.moveTo(0, -14); vctx.lineTo(5, -2); vctx.lineTo(5, 9); vctx.lineTo(-5, 9); vctx.lineTo(-5, -2);
+    vctx.closePath(); vctx.fill();
+    vctx.fillStyle = '#5a6472'; vctx.fillRect(-5, 0, 10, 3);
+    vctx.fillStyle = key;      vctx.fillRect(-5, -5, 10, 2);
+    vctx.fillStyle = '#2c333d';
+    vctx.beginPath(); vctx.moveTo(-5, 9); vctx.lineTo(-9, 15); vctx.lineTo(-5, 15); vctx.closePath(); vctx.fill();
+    vctx.beginPath(); vctx.moveTo(5, 9); vctx.lineTo(9, 15); vctx.lineTo(5, 15); vctx.closePath(); vctx.fill();
+    vctx.restore();
+  }
+}
+
+/* ------------------------------------------------------------------ drones */
 function drawDrone(d, isPlayer) {
   if (!d.alive) return;
   const a = Math.atan2(d.vy, d.vx);
-  const base = d.col === PLAYER ? '#ffc857' : '#ff5a5a';
+  const mine = d.col === PLAYER;
+  const accent = mine ? '#ffc857' : '#ff5a5a';
+  const hull = d.hurt > 0 ? '#ffffff' : mine ? '#d8e0ea' : '#e6c3c0';
+
   vctx.save();
   vctx.translate(d.x, d.y); vctx.rotate(a);
+
   if (isPlayer) {
-    vctx.strokeStyle = 'rgba(255,200,87,.55)'; vctx.lineWidth = 1;
-    vctx.beginPath(); vctx.arc(0, 0, 9 + Math.sin(frame * 0.12) * 1.2, 0, 6.2832); vctx.stroke();
+    vctx.strokeStyle = 'rgba(255,200,87,.5)'; vctx.lineWidth = 1;
+    vctx.beginPath(); vctx.arc(0, 0, 12 + Math.sin(frame * 0.11) * 1.4, 0, 6.2832); vctx.stroke();
   }
-  vctx.fillStyle = d.hurt > 0 ? '#ffffff' : base;
+
   if (d.caste === 'guard') {
+    // survey/security drone: heavier chassis, twin booms
+    vctx.fillStyle = '#4b5563';
+    vctx.fillRect(-5, -6, 4, 12);
+    vctx.fillStyle = hull;
     vctx.beginPath();
-    vctx.moveTo(6, 0); vctx.lineTo(-3, 4.5); vctx.lineTo(-1.5, 0); vctx.lineTo(-3, -4.5);
+    vctx.moveTo(9, 0); vctx.lineTo(1, 5.5); vctx.lineTo(-5, 4); vctx.lineTo(-5, -4); vctx.lineTo(1, -5.5);
     vctx.closePath(); vctx.fill();
+    vctx.fillStyle = accent; vctx.fillRect(-3, -1.2, 7, 2.4);
   } else {
+    // mining drone: bore head forward, solar spine aft
+    vctx.fillStyle = '#4b5563';
+    vctx.fillRect(-6, -1.5, 5, 3);
+    vctx.fillStyle = hull;
     vctx.beginPath();
-    vctx.moveTo(5, 0); vctx.lineTo(-2, 3.4); vctx.lineTo(-4, 0); vctx.lineTo(-2, -3.4);
+    vctx.moveTo(8, 0); vctx.lineTo(2, 4.5); vctx.lineTo(-4, 3); vctx.lineTo(-4, -3); vctx.lineTo(2, -4.5);
     vctx.closePath(); vctx.fill();
+    vctx.fillStyle = '#2f5f96';                       // panel
+    vctx.fillRect(-3, -3.4, 4, 6.8);
+    vctx.fillStyle = accent; vctx.fillRect(4, -1, 3, 2);
   }
   // headlamp
-  vctx.fillStyle = 'rgba(255,255,255,.85)';
-  vctx.fillRect(4, -1, 2, 2);
+  vctx.fillStyle = 'rgba(220,245,255,.95)'; vctx.fillRect(7, -1, 2.5, 2);
   vctx.restore();
 
   // cargo pips
   const load = d.ore + d.ice;
-  if (load > 0) {
-    for (let k = 0; k < load; k++) {
-      vctx.fillStyle = k < d.ore ? '#d2953f' : '#6fd6e8';
-      vctx.fillRect(d.x - 4 + k * 3, d.y - 9, 2, 2);
-    }
+  for (let k = 0; k < load; k++) {
+    vctx.fillStyle = k < d.ore ? '#d9a441' : '#6fd6e8';
+    vctx.fillRect(d.x - 5 + k * 4, d.y - 13, 3, 3);
+  }
+  // hull bar when damaged
+  if (d.hp < d.max * 0.7) {
+    vctx.fillStyle = 'rgba(0,0,0,.6)'; vctx.fillRect(d.x - 7, d.y + 10, 14, 2);
+    vctx.fillStyle = d.hp < d.max * 0.3 ? '#ff5a5a' : '#6fd6e8';
+    vctx.fillRect(d.x - 7, d.y + 10, 14 * (d.hp / d.max), 2);
   }
   if (isPlayer) {
-    vctx.fillStyle = 'rgba(255,200,87,.9)';
-    vctx.font = '700 8px ui-monospace,monospace';
+    vctx.fillStyle = 'rgba(255,200,87,.95)';
+    vctx.font = '700 9px ui-monospace,monospace';
     vctx.textAlign = 'center';
-    vctx.fillText('01', d.x, d.y + 15);
+    vctx.fillText('DRONE-01', d.x, d.y + 24);
     vctx.textAlign = 'left';
   }
 }
@@ -1222,19 +1494,18 @@ function drawDrone(d, isPlayer) {
 function drawCrawler(c) {
   vctx.save();
   vctx.translate(c.x, c.y);
+  const a = Math.atan2(c.vy, c.vx);
   vctx.fillStyle = '#b06be0';
-  vctx.beginPath(); vctx.ellipse(0, 0, 7, 5, Math.atan2(c.vy, c.vx), 0, 6.2832); vctx.fill();
-  vctx.strokeStyle = 'rgba(176,107,224,.8)'; vctx.lineWidth = 1.4;
+  vctx.beginPath(); vctx.ellipse(0, 0, 9, 6, a, 0, 6.2832); vctx.fill();
+  vctx.strokeStyle = 'rgba(176,107,224,.75)'; vctx.lineWidth = 1.6;
   for (let k = -1; k <= 1; k += 2) {
-    vctx.beginPath();
-    vctx.moveTo(0, 0);
-    vctx.lineTo(k * 8, Math.sin(frame * 0.2 + k) * 6);
-    vctx.stroke();
+    vctx.beginPath(); vctx.moveTo(0, 0);
+    vctx.lineTo(k * 11, Math.sin(frame * 0.2 + k) * 8); vctx.stroke();
   }
-  vctx.fillStyle = '#ffd0ff';
-  vctx.fillRect(-1, -1, 2, 2);
+  vctx.fillStyle = '#ffd0ff'; vctx.fillRect(-1.5, -1.5, 3, 3);
   vctx.restore();
 }
+
 
 function drawMini() {
   const sx = mini.width / MW, sy = mini.height / MH;
@@ -1268,6 +1539,7 @@ function updateHud() {
   $('hud-ice').textContent = Math.floor(c.ice);
   $('hud-pow').style.width = (c.pwr / c.pwrMax * 100) + '%';
   $('hud-swarm').textContent = mine.length;
+  $('hud-shipped').textContent = Math.round(c.shipped);
   $('hud-cargo').textContent = (player.ore + player.ice) + '/' + player.cap;
   $('hud-hp').style.width = clamp(player.hp / player.max * 100, 0, 100) + '%';
   $('hud-hub').style.width = clamp(c.integrity / c.integrityMax * 100, 0, 100) + '%';

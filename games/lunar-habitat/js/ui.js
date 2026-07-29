@@ -29,11 +29,11 @@
       if (!mods.length) return;
       p.appendChild(el('h4', null, cat.name));
       mods.forEach(function (m) {
-        var locked = m.tier > s.tier;
+        var locked = !s.sandbox && m.tier > s.tier;
         var row = el('div', 'tool' + (locked ? ' locked' : '') + (ui.tool === m.id ? ' on' : ''),
           '<div class="sw" style="background:' + m.color + '"></div>' +
           '<div class="nm">' + m.name + '</div>' +
-          '<div class="ct">' + (locked ? 'T' + m.tier : shortMoney(m.cost) + (m.vertical ? '/lv' : '')) + '</div>');
+          '<div class="ct">' + (locked ? 'T' + m.tier : (s.sandbox ? 'FREE' : shortMoney(m.cost) + (m.vertical ? '/lv' : ''))) + '</div>');
         row.title = m.name + ' — ' + m.desc;
         if (!locked) row.onclick = function () { LH.setTool(m.id); };
         row.onmouseenter = function () { LH.previewModule(m); };
@@ -270,6 +270,17 @@
       return '<div class="logline ' + e.kind + '"><span class="d">Day ' + e.day + '</span><br>' + e.msg + '</div>';
     }).join('');
   }
+
+  LH.toggleSandbox = function () {
+    var s = LH.S;
+    s.sandbox = !s.sandbox;
+    var b = document.getElementById('btn-sandbox');
+    if (b) b.classList.toggle('on', !!s.sandbox);
+    LH.buildPalette(s);
+    LH.toast(s.sandbox ?
+      'Sandbox open — every module is free and every tier is unlocked. Build the colony of your dreams.' :
+      'Sandbox closed. Costs and charter locks are back in force.', s.sandbox ? 'good' : 'warn');
+  };
 
   LH.bulldozeSelected = function () {
     if (!ui.sel) return;

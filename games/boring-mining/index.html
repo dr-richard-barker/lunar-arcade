@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Boring Mining Game — Lunar Arcade</title>
-<meta name="description" content="A lunar colony sim: bore tunnels, lay marker beacons, print drones and out-mine a rival extraction colony. Original browser game in the classic colony-sim tradition.">
+<meta name="description" content="A lunar ISRU drone-swarm sim: bore tunnels, lay marker beacons, print mining drones, ship ore to Earth and out-mine a rival extraction colony.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -13,13 +13,15 @@
   <!-- ============================ TITLE ============================ -->
   <section id="screen-title" class="screen active">
     <div class="panel">
-      <h2>LUNAR ARCADE PRESENTS</h2>
+      <h2>LUNAR ARCADE · ISRU DRONE PROGRAM</h2>
       <h1>THE BORING MINING GAME</h1>
-      <p class="tagline">Mare Ingenii, 2091. You are <b>DRONE-01</b> of colony <b>BORE-1</b> —
-      one unit among many, and the only one with a pilot. Bore the regolith, haul ore and ice
-      home, lay beacons the rest of the swarm will follow, and print more of yourself.
-      Somewhere across the mare, <span style="color:var(--red)">HELIOS EXTRACTION</span> is doing
-      exactly the same thing, and there is only one seam worth having.</p>
+      <p class="tagline">Mare Ingenii, 2091. You are <b>DRONE-01</b> of mining swarm <b>BORE-1</b> —
+      one drone among many, and the only one with a pilot. Bore the regolith, haul ilmenite and
+      volatiles back to the plant, drop beacons the rest of the swarm will follow, and print more
+      of yourself. Every tonne you land builds the surface plant out another module, and the
+      surplus flies to Earth orbit. Somewhere across the mare,
+      <span style="color:var(--red)">HELIOS EXTRACTION</span> is doing exactly the same thing,
+      and there is only one seam worth having.</p>
 
       <h3>CONTRACT DIFFICULTY</h3>
       <div class="opts" id="diff-opts">
@@ -35,7 +37,7 @@
       </div>
 
       <p class="footnote">An original fan-made game for the <a href="../../">Lunar Arcade</a>.
-      Inspired by the 1991 colony-sim classic — no original code, art or data is used or distributed here.</p>
+      Inspired by a 1991 colony-sim classic — no original code, art or data is used or distributed here.</p>
     </div>
   </section>
 
@@ -68,10 +70,10 @@
         <div>
           <h3>THE SWARM</h3>
           <ul>
-            <li><b>Miners</b> wander, smell ore through rock, bore toward it and haul it home —
+            <li><b>Mining drones</b> wander, smell ore through rock, bore toward it and haul it home —
                 laying a scent trail on the return trip that other miners follow. That trail is
                 how a productive tunnel becomes a highway.</li>
-            <li><b>Guards</b> patrol the tunnels and run down any rally beacon or distress
+            <li><b>Guard drones</b> patrol the tunnels and run down any rally beacon or distress
                 scent. They are how you take ground.</li>
             <li>Beacons evaporate. A route only stays busy while it keeps paying.</li>
           </ul>
@@ -85,13 +87,17 @@
             <li><span class="swatch" style="background:var(--ok)"></span><b>POWER</b> — solar. Charges fast in the
                 lunar day, barely at all in the night. Print while the sun is up.</li>
           </ul>
+          <p class="dim">Every tonne delivered builds the surface plant out: solar arrays, a
+          high-gain dish, volatile tanks, radiators, a habitat dome. Once the launch pad is up,
+          surplus ore above the printing reserve is flown to Earth orbit — that tonnage is your
+          score, and the plant keeps growing as it climbs.</p>
         </div>
 
         <div>
           <h3>THE OPPOSITION</h3>
           <ul>
             <li><span class="swatch" style="background:var(--red)"></span><b>Helios drones</b> mine the same
-                seams and raid your hub. Bore into <em>their</em> fabricator to end the contract.</li>
+                seams and raid your plant. Bore into <em>their</em> fabricator to end the contract.</li>
             <li><span class="swatch" style="background:var(--violet)"></span><b>Tube crawlers</b> live in the deep
                 lava tubes and eat anything with a heat signature. Neither colony owns them.</li>
             <li>If DRONE-01 is destroyed, your link jumps to the nearest surviving unit.
@@ -113,6 +119,7 @@
       <div class="stat"><span class="k">ICE</span><span class="v ice" id="hud-ice">0</span></div>
       <div class="stat"><span class="k">PWR</span><div class="bar pw"><i id="hud-pow"></i></div></div>
       <div class="stat"><span class="k">SWARM</span><span class="v amb" id="hud-swarm">0</span></div>
+      <div class="stat"><span class="k">SHIPPED</span><span class="v ok" id="hud-shipped">0</span></div>
       <div class="stat"><span class="k">CARGO</span><span class="v" id="hud-cargo">0/4</span></div>
       <div class="stat"><span class="k">HULL</span><div class="bar hp"><i id="hud-hp"></i></div></div>
       <div class="spacer"></div>
@@ -133,8 +140,8 @@
     </div>
 
     <div class="stage">
-      <canvas id="view" width="960" height="540"></canvas>
-      <canvas id="mini" width="200" height="120"></canvas>
+      <canvas id="view" width="1280" height="720"></canvas>
+      <canvas id="mini" width="228" height="135"></canvas>
       <div id="ticker"></div>
       <div id="banner"><div>
         <h1 id="banner-title">PAUSED</h1>
