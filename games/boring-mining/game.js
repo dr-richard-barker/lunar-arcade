@@ -931,9 +931,20 @@ function startGame() {
   // chosen seed is recorded on the league row so any run can be reproduced.
   setSeed(pinnedSeed !== null ? pinnedSeed : (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
   TRIP.fired.length = 0; TRIP._amode = null; TRIP._aage = 0;
+  // Reset every module-level scratch variable the simulation touches. These
+  // leak across contracts otherwise: `scentDir` alternates the scan direction
+  // of the scent relaxation, so inheriting its parity from the previous run
+  // relaxes the field on the opposite phase and diverges every drone decision
+  // downstream — the same seed then yields a different contract.
+  scentDir = 0;
+  navDirty = true; navTimer = 0;
+  faceX = 1; faceY = 0;
   $('banner').classList.remove('on');
   $('banner-title').style.color = '';
+  // auto.wob is the agent's wander phase — leaving it set carries the previous
+  // contract's steering into the first frame of the next one.
   auto.mode = 'mine'; auto.beaconCd = 0; auto.orderCd = 0; auto.sieging = false;
+  auto.wob = 0; auto.saidMode = '';
   swarmPeak = 0; autoUsed = auto.on;
 
   generate();
