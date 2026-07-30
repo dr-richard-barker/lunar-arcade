@@ -80,6 +80,10 @@ const DIFFS = [0, 1, 2];
 
 function runContract(d, budget) {
   diff = d;
+  // Clear the previous contract's result first. Without this a run that never
+  // terminates reports the *last* run's score as its own — the harness lied
+  // about a stalemate the first time it hit one.
+  lastRun = null;
   document.getElementById('btn-start').click();
   setAuto(true);
   let steps = 0;
@@ -108,6 +112,7 @@ function report(rows) {
     w('   mined ' + r.mined + '  shipped ' + r.shipped + ' t  tier ' + r.tier +
       '  swarm ' + r.swarm + '  score ' + (r.score === null ? '—' : r.score));
 
+    if (!r.finished) w('   STALEMATE — hit the step budget without a result', 'fail');
     const checks = [
       ['run terminates within budget', r.finished],
       ['all coordinates finite',       r.finite],

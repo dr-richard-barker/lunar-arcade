@@ -134,26 +134,8 @@ against.
 - **If a description says "in range", the code must check range.** Several module descriptions
   promise behaviour the simulation implements globally, or not at all.
 
-The following four came out of the mining game rather than the colony, and are about agents and
-physics rather than economies. They generalise.
-
-- **A diffusing signal that evaporates cannot serve as a global recall.** Alarm pheromone decayed to
-  nothing long before it crossed the map, so guards on the far side of the claim never learned the
-  fabricator was being drilled. A colony under attack needs an explicit colony-level order; a field
-  gradient is a *local* signal and can only ever be one.
-- **A collider that resolves axes separately cannot traverse a diagonal-only gap.** Drones bored
-  diagonally, which produced staircases with no orthogonal opening, and then wedged in them —
-  permanently, while still reporting a live non-idle state. Agents that dig must dig orthogonally.
-  Note that a unit test on the collider would have *passed*: the collider was correct and world
-  generation produced a shape it could not traverse. The bug lived between two correct components,
-  which is exactly what unit tests cannot see.
-- **A state must not be enterable when its exit condition cannot fire.** The autoplay agent fled home
-  to repair, but repair only ever happened as a side effect of unloading cargo — so an agent that
-  arrived empty sat there forever. Every state needs an exit that does not depend on an unrelated
-  event.
-- **Never divide by a layout measurement.** Screen-to-world conversion divided by the canvas's
-  bounding rect, which is zero in a hidden tab or a collapsed container. The scale factor becomes
-  Infinity, NaN reaches the entity's velocity, and the run is unrecoverable from that frame on.
+The mining game keeps its own invariant list — agent and physics failures rather than economic ones —
+in [`games/boring-mining/ROADMAP.md`](games/boring-mining/ROADMAP.md).
 
 ---
 
@@ -333,28 +315,10 @@ visible at a glance.
 
 ### Second track — the mining game
 
-The phases above are all Lunar Habitat, which is right: it is the game with an unfinished endgame.
-The mining game needs almost nothing by comparison, but it does need one thing, and it is the same
-thing Phase 1 is.
-
-Every bug ever found in it was found by running the simulation headlessly at speed and watching for
-things that stopped moving — the four agent-and-physics invariants in §3 above are all soak findings.
-That technique currently exists only as something done by hand, once. It should be a file:
-`tools/soak-mining.html`, loading the game with tripwires armed and running the autoplay agent to
-completion across all three difficulties, asserting no NaN anywhere, no living agent motionless while
-in a non-idle state, no AI state older than a threshold, and termination inside a step budget.
-
-Reproducibility is the prerequisite, not a feature. World generation is already deterministic, but
-about six simulation-relevant `Math.random()` sites remain — drone and crawler wobble, crawler
-placement, and the two stuck-breaker directions — so a soak failure reports "failed on run 7" with no
-way to replay run 7. A seeded generator on those sites, with cosmetic randomness (audio, particles)
-deliberately left on `Math.random()` so visual noise never consumes simulation entropy, closes it in
-an afternoon.
-
-Habitat needs no equivalent: `config.js`, `grid.js` and `sim.js` contain zero DOM references and zero
-`Math.random()` calls, so that simulation is already both headless-runnable and deterministic. The
-work there is to *verify* it — double-run the harness and diff — which then becomes a free
-regression test.
+The phases above are all Lunar Habitat, which is right: it is the game with the unfinished
+endgame. The mining game is planned separately and in full in
+[`games/boring-mining/ROADMAP.md`](games/boring-mining/ROADMAP.md) — current state, its own
+invariants, a measured difficulty curve and a phased plan. It is not repeated here.
 
 ### Mission Control
 

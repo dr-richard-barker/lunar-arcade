@@ -23,10 +23,18 @@ const HARD  = [0, 62, 190, 105, 78, 0, 0, 0, 1e9];   // bore work per tile
 const DAY_LEN = 75, NIGHT_LEN = 55;
 const PLAYER = 0, HELIOS = 1;
 
+/* Difficulty. The old table gave both colonies the same hub integrity, so
+   turning it up made *Helios* tankier and left you exactly as safe — harder
+   meant longer, not riskier, and the agent won 7/7 on the hardest setting with
+   94% of its fabricator intact. Player and rival durability are now separate,
+   and raids scale in frequency, size and bite. */
 const DIFF = [
-  { name: 'SURVEY RUN',       foeRate: 0.55, foeRaid: 95, hub: 800,  crawlers: 3 },
-  { name: 'CLAIM DISPUTE',    foeRate: 0.90, foeRaid: 70, hub: 950,  crawlers: 5 },
-  { name: 'HOSTILE TAKEOVER', foeRate: 1.35, foeRaid: 48, hub: 1150, crawlers: 7 },
+  { name: 'SURVEY RUN',       foeRate: 0.50, foeRaid: 105, playerHub: 950, foeHub: 700,
+    raid: 3, raidDmg: 0.06, crawlers: 3 },
+  { name: 'CLAIM DISPUTE',    foeRate: 1.05, foeRaid: 50, playerHub: 800, foeHub: 900,
+    raid: 6, raidDmg: 0.15, crawlers: 5 },
+  { name: 'HOSTILE TAKEOVER', foeRate: 1.85, foeRaid: 26, playerHub: 640, foeHub: 1020,
+    raid: 12, raidDmg: 0.26, crawlers: 7 },
 ];
 
 const COST = {
@@ -459,7 +467,8 @@ function makeColony(id, tx, ty, tile) {
     id, tx, ty, tile,
     x: tx * TS, y: ty * TS,
     ore: 30, ice: 14, pwr: 60, pwrMax: 120,
-    integrity: d.hub, integrityMax: d.hub,
+    integrity: id === PLAYER ? d.playerHub : d.foeHub,
+    integrityMax: id === PLAYER ? d.playerHub : d.foeHub,
     printCd: 0, raidCd: d.foeRaid * 0.6,
     auto: id === HELIOS, mined: 0, printed: 0, lost: 0,
     assaultOn: false, underAttack: 0, warnCd: 0, idleCd: 25,
@@ -1330,13 +1339,18 @@ function autopilot(dt) {
   // ---- pick a mode ----
   const loaded = p.ore + p.ice >= p.cap;
   const hurt = p.hp < p.max * 0.32;
-  // Gate the assault on fighting strength, not on banked ore — autofab keeps
-  // the ore bank near zero by design, so an ore threshold never fires.
-  if (!auto.sieging && guards >= 8 && c.integrity > c.integrityMax * 0.55) {
+  // Gate the assault on fighting strength alone. It used to also require the
+  // fabricator to be above 55% — but hub integrity never regenerates, so once
+  // Helios had chipped it the gate was permanently unsatisfiable: the agent
+  // turtled forever, the rival hub went untouched, and the contract could not
+  // end at all. Losing slowly is still losing; if you have the guards, go.
+  if (!auto.sieging && guards >= 8) {
     auto.sieging = true;
     log('<span class="good">Autoplay: swarm is strong enough — moving on Helios.</span>');
   }
-  if (c.integrity < c.integrityMax * 0.35) auto.sieging = false;   // stop attacking, go home
+  // Break off only while the drill is actually on the fabricator, not merely
+  // because it is damaged — otherwise this reintroduces the same one-way gate.
+  if (c.underAttack > 0 && c.integrity < c.integrityMax * 0.30) auto.sieging = false;
 
   auto.mode = c.underAttack > 0 ? 'defend'
             : hurt              ? 'repair'
@@ -1479,13 +1493,19 @@ function updateDrone(d, dt) {
     const t = map[idx(ntx, nty)];
     if (SOLID[t] && t !== BED) {
       // miners bore anything; guards only bore to reach the enemy
-      if (d.caste === 'miner' || d.state === 'assault' || d.state === 'defend') {
+      // `d.panic` means the stuck-breaker has fired, so let any caste dig here:
+      // a patrolling guard boxed in by geometry is otherwise trapped for good —
+      // it picks an escape heading it has no means to act on.
+      if (d.caste === 'miner' || d.state === 'assault' || d.state === 'defend' || d.panic > 0) {
         d._boreT = clock.elapsed;                     // drilling counts as working
         if (bore(ntx, nty, (d.caste === 'miner' ? 58 : 34) * dt, d.col, d.caste === 'miner' ? d : null))
           d.cd = 0;
       }
     } else if (t === RHUB || t === HUB) {
-      if ((t === HUB ? PLAYER : HELIOS) !== d.col) { d._boreT = clock.elapsed; bore(ntx, nty, 42 * dt, d.col, null); }
+      if ((t === HUB ? PLAYER : HELIOS) !== d.col) {
+        d._boreT = clock.elapsed;
+        bore(ntx, nty, 42 * dt, d.col, null, d.col === HELIOS ? DIFF[diff].raidDmg : 0.09);
+      }
     }
   }
 
@@ -1680,7 +1700,7 @@ function updateColony(c, dt) {
     c.raidCd -= dt;
     if (c.raidCd <= 0) {
       c.raidCd = DIFF[diff].foeRaid;
-      const squad = mine.filter(d => d.caste === 'guard' && !d.assault).slice(0, 3 + diff * 2);
+      const squad = mine.filter(d => d.caste === 'guard' && !d.assault).slice(0, DIFF[diff].raid);
       squad.forEach(d => d.assault = true);
       if (squad.length) log('<span class="warn">Helios raid inbound</span> — ' + squad.length + ' guards.');
     }
