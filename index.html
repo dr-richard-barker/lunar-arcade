@@ -5,9 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lunar Arcade — classic sims, relocated to the Moon</title>
 <meta name="description" content="Original browser games in the spirit of the classic Maxis sims, rebuilt from scratch with a lunar-settlement theme.">
+<script>
+  (function() {
+    let theme = localStorage.getItem('cose_theme');
+    if (!theme) {
+      theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
 <link rel="stylesheet" href="assets/hub.css">
 </head>
 <body>
+
+<div style="max-width:900px; margin: 16px auto 0; padding: 0 22px; display: flex; justify-content: flex-end; position: absolute; left: 0; right: 0; z-index: 10;">
+  <button id="themeToggleBtn" onclick="toggleTheme()" style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 6px 12px; cursor: pointer; font-family: var(--mono); font-size: 12px; font-weight: 600;" title="Toggle Theme">🌓</button>
+</div>
 
 <header class="hero">
   <div class="wrap">
@@ -126,5 +139,27 @@
   <p>Built for the fun of it · source on <a href="https://github.com/dr-richard-barker">GitHub</a> · MIT licensed</p>
 </footer>
 
+<script>
+  function toggleTheme() {
+    const htmlEl = document.documentElement;
+    const currentTheme = htmlEl.getAttribute('data-theme') || 'dark';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    htmlEl.setAttribute('data-theme', newTheme);
+    localStorage.setItem('cose_theme', newTheme);
+    
+    document.getElementById('themeToggleBtn').textContent = newTheme === 'dark' ? '☀️' : '🌙';
+  }
+
+  function initThemeIcon() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const btn = document.getElementById('themeToggleBtn');
+    if (btn) {
+      btn.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+    }
+  }
+  
+  initThemeIcon();
+</script>
 </body>
 </html>

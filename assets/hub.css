@@ -9,6 +9,11 @@
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 }
+html[data-theme="light"] {
+  --bg:#ffffff; --fg:#1a2230; --muted:#5a6473; --line:#e5e9f0;
+  --card:#f7f9fc; --card2:#eef2f6;
+  --accent:#3B6EA5; --accent2:#3FB6A8;
+}
 
 *{box-sizing:border-box}
 body{
