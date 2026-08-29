@@ -15,8 +15,18 @@
   })();
 </script>
 <link rel="stylesheet" href="assets/hub.css">
+<!-- CoSE Theme Overlay Stylesheets -->
+<link rel="stylesheet" href="https://dr-richard-barker.github.io/Plant_response_to_radiation/cose/cose-theme.css" />
+<link rel="stylesheet" href="https://dr-richard-barker.github.io/Plant_response_to_radiation/cose/cose-chrome.css" />
+<link rel="stylesheet" href="https://dr-richard-barker.github.io/Plant_response_to_radiation/cose/cose-map.css" />
+<style>
+  /* Layering CoSE rails above page components */
+  .topbar.cose-dark, .topbar.cose-light { z-index: 10001 !important; }
+  .sitebar.cose-dark, .sitebar.cose-light { z-index: 10000 !important; }
+  .map-scrim { z-index: 9999 !important; }
+</style>
 </head>
-<body>
+<body data-site-id="lunar-arcade" data-brand-logo="https://dr-richard-barker.github.io/Plant_response_to_radiation/cose/cose-logo.png">
 
 <div style="max-width:900px; margin: 16px auto 0; padding: 0 22px; display: flex; justify-content: flex-end; position: absolute; left: 0; right: 0; z-index: 10;">
   <button id="themeToggleBtn" onclick="toggleTheme()" style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 6px 12px; cursor: pointer; font-family: var(--mono); font-size: 12px; font-weight: 600;" title="Toggle Theme">🌓</button>
@@ -161,5 +171,8 @@
   
   initThemeIcon();
 </script>
+<!-- CoSE Theme Integration Scripts -->
+<script src="https://dr-richard-barker.github.io/Plant_response_to_radiation/cose/sites.js"></script>
+<script src="https://dr-richard-barker.github.io/Plant_response_to_radiation/cose/theme.js"></script>
 </body>
 </html>
