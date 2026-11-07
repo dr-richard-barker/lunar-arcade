@@ -1,9 +1,10 @@
 # Lunar Arcade
 
 Original browser games in the spirit of the classic 1990s Maxis simulation games,
-rebuilt from scratch with a lunar-settlement theme. Everything is vanilla
-JavaScript — no build step, no dependencies, no assets to download. Open
-`index.html` or serve the folder and play.
+plus a turn-based artillery game, rebuilt from scratch with a lunar-settlement
+theme. Everything is vanilla JavaScript — no build step, no dependencies, no
+assets to download. Open `index.html` or serve the folder and play
+(`python3 tools/serve.py` serves the repository at http://127.0.0.1:8433/).
 
 **Live site:** deploy this repository to GitHub Pages (Settings → Pages → deploy
 from branch, root folder) and the hub page just works.
@@ -116,6 +117,53 @@ ends.
   delivery is set aside for that contract; shipped tonnage is your score.
 
 Single file each: `index.html`, `style.css`, `game.js` (no modules, no build).
+
+### Regolith Rovers (`games/regolith-rovers/`) — playable
+
+Turn-based artillery for teams of Space Robot Dogs on a moon base, built around
+one idea: gravity is a control. Teams take turns to walk, jump and fire across
+destructible ground; the base's (fictional) gravity plating lets the team on turn
+change how hard gravity pulls and which way.
+
+- **Three gravities, real numbers.** The top-right button cycles Moon 1.62 and
+  Mars 3.73 m/s² (NASA NSSDCA fact sheets) and Earth 9.81 m/s² (standard
+  gravity, 9.80665). The arena is airless on every setting, so every shot is an
+  exact parabola: the same launch goes about six times farther on the Moon.
+- **A gravity compass.** Drag the needle (15° steps, `[` `]`, `V` for straight
+  down) to point gravity anywhere. Turn it a quarter turn and a shot that would
+  land 40 m down-range lands 40 m up a wall.
+- **Mag-paws.** Standing dogs grip floor, wall or ceiling and ignore gravity
+  changes; anything airborne — shots, debris, jumping or blasted dogs — obeys
+  the current setting. Falls hurt by impact speed, so the same 5 m drop is
+  harmless on the Moon and painful on Earth.
+- **Two arena types,** freshly generated each match: an open-sky surface base
+  (lander, habitat dome, solar arrays, a CoSE greenhouse module) where gravity
+  pointed skyward sends anything airborne into space, and an enclosed lava tube
+  under skylights inside an indestructible bedrock frame.
+- **Eight original tools:** Bone Rocket, Fetch Ball (bouncing, 1–5 s fuse),
+  Sample Scatter, Supply Drop (pods fall along the *current* gravity), Laser
+  Pointer (straight beam, ignores gravity), Thruster Pack (thrust-to-weight
+  3.7 on the Moon, 0.61 on Earth — it cannot lift off there), Regolith Printer
+  and Drill Paw.
+- **2–4 teams on one device,** each human or CPU (Cadet, Specialist,
+  Commander). The CPU searches hundreds of shots through the same physics step
+  the game uses, and sets the planet and compass itself before it fires.
+- **◈ AUTO AI** (`F`) hands the team on turn to the computer; **∞ AMMO** (`U`)
+  makes every kit bottomless. Both sit top right beside the gravity controls and
+  are badged on the mission report.
+- **Training aid** draws the first part of each shot's arc and shows launch
+  speed in m/s; `?training=1` in the link turns it on. A field manual gives the
+  formulas, worked numbers and sources.
+
+Tests: `node tools/test-regolith-rovers.mjs` checks flat-ground range and flight
+time against v²·sin2θ/g and 2v·sinθ/g on all three worlds, rotated gravity,
+mag-paws, falls, the thrust-to-weight cut-off, blasts, the arena generator, both
+toggles and the Commander CPU's hit rate.
+
+Code layout: `js/physics.js` (fixed-step physics, DOM-free), `js/terrain.js`
+(seeded arena generator), `js/weapons.js`, `js/ai.js` (CPU shot search),
+`js/game.js` (match engine, DOM-free), `js/render.js`, `js/audio.js`
+(synthesised suit-radio sounds), `js/ui.js`, `js/main.js`.
 
 ### Lunar Farm — lives in its own repository
 

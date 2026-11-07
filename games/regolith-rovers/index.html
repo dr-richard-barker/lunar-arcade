@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Regolith Rovers — Lunar Arcade</title>
+<meta name="description" content="Turn-based artillery for Space Robot Dogs on a moon base. Dial gravity between the Moon, Mars and Earth, point it any way you like, and watch every arc change.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="view" aria-label="Regolith Rovers arena"></canvas>
+
+  <!-- ============================== HUD ============================== -->
+  <div id="hud" class="off">
+    <div id="hud-tl" class="hud-box">
+      <div class="banner"><span class="swatch" id="h-swatch"></span><b id="h-team">—</b></div>
+      <div class="sub"><span id="h-dog">—</span> <span id="h-hp" class="hp">100</span> <span id="h-ctrl" class="ctrl"></span></div>
+      <div class="clock"><span id="h-timer">45</span><span id="h-phase">AIM</span></div>
+      <div class="minirow">
+        <button class="mini" id="b-menu" title="Pause and menu (P)">☰</button>
+        <button class="mini" id="b-sound" title="Sound on/off (M)">🔊</button>
+        <button class="mini" id="b-arc" title="Training aid: predicted arc (T)">⌒</button>
+        <button class="mini" id="b-zoom" title="Overview (Z)">⤢</button>
+        <button class="mini" id="b-ff" title="Fast-forward flights ×3 (hold Shift)">⏩</button>
+      </div>
+    </div>
+
+    <div id="hud-tr" class="hud-box">
+      <div class="toggles">
+        <button class="tog" id="b-auto" title="Hand this team to the AI (F)">◈ AUTO AI</button>
+        <button class="tog" id="b-ammo" title="Unlimited ammo for every team (U)">∞ AMMO</button>
+      </div>
+      <button class="planet" id="b-planet" title="Cycle gravity: Moon → Mars → Earth (G)">
+        <span id="p-icon">🌕</span><span class="pname" id="p-name">MOON</span><span class="pg" id="p-g">1.62 m/s²</span>
+      </button>
+      <div class="compass-wrap">
+        <canvas id="compass" title="Drag to point gravity; double-click for straight down ([ ] V)"></canvas>
+        <button id="g-readout" title="Point gravity straight down (V)">g points S · 180°</button>
+      </div>
+    </div>
+
+    <div id="hud-teams"></div>
+    <div id="ff-badge" class="off">⏩ ×3</div>
+
+    <div id="hud-bottom">
+      <div id="info-line"></div>
+      <div id="weapons"></div>
+      <div id="fuse" class="off">FUSE <button class="mini" id="b-fuse-dn">−</button><b id="fuse-s">3 s</b><button class="mini" id="b-fuse-up">+</button></div>
+    </div>
+
+    <div id="touchpad">
+      <div class="pad left">
+        <button data-k="left">◀</button><button data-k="jump">⤒</button><button data-k="right">▶</button>
+      </div>
+      <div class="pad right">
+        <button data-k="up">▲</button><button data-k="down">▼</button><button data-k="fire" class="fire">FIRE</button>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+  </div>
+
+  <!-- ============================ TITLE ============================ -->
+  <section id="screen-title" class="screen active">
+    <div class="panel">
+      <p class="kicker">LUNAR ARCADE · MOON BASE DEFENCE DRILL</p>
+      <h1>REGOLITH ROVERS</h1>
+      <p class="tagline">Turn-based artillery for teams of <b>Space Robot Dogs</b>. Lob bone rockets and
+        fetch balls across a moon base — then reach for the base's experimental gravity plating, switch
+        the pull between the <b>Moon</b>, <b>Mars</b> and <b>Earth</b>, and point it any way you like.
+        Every arc changes. Learn why, and you win.</p>
+
+      <h3>ARENA</h3>
+      <div class="opts" id="o-arena">
+        <div class="opt" data-v="surface"><b>SURFACE BASE</b><span>Open sky, craters, a lander and habitat domes. Point gravity skyward and dogs fall into space.</span></div>
+        <div class="opt" data-v="tube"><b>LAVA TUBE</b><span>An enclosed tube under the crust, opened by skylights. Every direction has a floor.</span></div>
+        <div class="opt" data-v="random"><b>RANDOM</b><span>Either, freshly generated.</span></div>
+      </div>
+
+      <h3>TEAMS</h3>
+      <div id="o-teams"></div>
+      <button class="btn small" id="b-addteam">+ ADD TEAM</button>
+
+      <div class="grid2">
+        <div>
+          <h3>DOGS PER TEAM</h3>
+          <div class="opts row" id="o-dogs">
+            <div class="opt" data-v="2"><b>2</b></div><div class="opt" data-v="3"><b>3</b></div><div class="opt" data-v="4"><b>4</b></div>
+          </div>
+        </div>
+        <div>
+          <h3>TURN TIMER</h3>
+          <div class="opts row" id="o-timer">
+            <div class="opt" data-v="30"><b>30 s</b></div><div class="opt" data-v="45"><b>45 s</b></div>
+            <div class="opt" data-v="60"><b>60 s</b></div><div class="opt" data-v="0"><b>∞</b></div>
+          </div>
+        </div>
+        <div>
+          <h3>STARTING GRAVITY</h3>
+          <div class="opts row" id="o-planet">
+            <div class="opt" data-v="0"><b>🌕 MOON</b></div><div class="opt" data-v="1"><b>🔴 MARS</b></div><div class="opt" data-v="2"><b>🌍 EARTH</b></div>
+          </div>
+        </div>
+        <div>
+          <h3>TRAINING AID</h3>
+          <div class="opts row" id="o-training">
+            <div class="opt" data-v="1"><b>ON</b></div><div class="opt" data-v="0"><b>OFF</b></div>
+          </div>
+          <p class="dim small-print">Shows the first part of each shot's path and its launch speed.</p>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn big" id="b-start">LAUNCH MISSION ►</button>
+        <button class="btn" id="b-manual">FIELD MANUAL</button>
+        <button class="btn" id="b-controls">CONTROLS</button>
+      </div>
+
+      <p class="footnote">An original game for the <a href="../../">Lunar Arcade</a>, in the turn-based artillery
+        genre. No code, art, audio or data from any commercial game is used or distributed here.</p>
+    </div>
+  </section>
+
+  <!-- ========================= FIELD MANUAL ========================= -->
+  <section id="screen-manual" class="screen">
+    <div class="panel prose">
+      <p class="kicker">FIELD MANUAL</p>
+      <h1>GRAVITY, ARCS AND ROBOT DOGS</h1>
+
+      <h3>The drill</h3>
+      <p>Teams of robot dogs take turns. On your turn, walk, jump, pick a tool from the kit and fire.
+        Your dog's <b>mag-paws</b> grip whatever it stands on — floor, wall or ceiling — so changing
+        gravity never knocks a standing dog over. Gravity acts on everything in flight: shots, debris,
+        and any dog that jumps or is blasted off its feet. Last team with a dog standing wins.</p>
+      <p>The base's gravity plating is fiction: no real moon base can do this. Everything else here is
+        ordinary physics, worked out with the real numbers.</p>
+
+      <h3>Gravity on three worlds</h3>
+      <table class="facts">
+        <tr><th></th><th>g (m/s²)</th><th>vs Earth</th></tr>
+        <tr><td>🌕 Moon</td><td>1.62</td><td>0.17×</td></tr>
+        <tr><td>🔴 Mars</td><td>3.73</td><td>0.38×</td></tr>
+        <tr><td>🌍 Earth</td><td>9.81</td><td>1×</td></tr>
+      </table>
+      <p class="dim">Moon and Mars: NASA NSSDCA fact sheets [1, 2]. Earth: standard gravity,
+        9.80665 m/s² exactly [3].</p>
+
+      <h3>Why the same shot lands somewhere else</h3>
+      <p>The arena is airless on every setting, so a shot feels nothing but gravity and flies a perfect
+        parabola. On flat ground, a shot launched at speed <i>v</i> and angle <i>θ</i> travels
+        <b>R = v²·sin 2θ / g</b> and stays up for <b>T = 2v·sin θ / g</b>.</p>
+      <table class="facts">
+        <tr><th>20 m/s at 45°</th><th>range</th><th>time in flight</th></tr>
+        <tr><td>🌍 Earth</td><td>40.8 m</td><td>2.9 s</td></tr>
+        <tr><td>🔴 Mars</td><td>107 m</td><td>7.6 s</td></tr>
+        <tr><td>🌕 Moon</td><td>247 m</td><td>17.5 s</td></tr>
+      </table>
+      <p>Same speed, same angle: about six times farther on the Moon. To hit the same spot you need
+        only √(1.62 / 9.81) ≈ 41 % of the Earth launch speed, and the shot hangs in the sky about
+        2.5 times longer. Hold <kbd>Shift</kbd> to fast-forward long flights.</p>
+
+      <h3>Pointing gravity</h3>
+      <p>The compass sets which way gravity pulls. Turn it a quarter turn and every arc turns with it:
+        a shot that would have landed 40 m down-range now lands 40 m up a wall. Point it across the
+        arena and you can curve a shot round cover; point it at the sky on the surface base and
+        anything that leaves the ground falls away into space.</p>
+
+      <h3>Jumps, falls and thrusters</h3>
+      <p>A dog jumps at a fixed 3 m/s. It rises about 0.34 m on Earth, 0.9 m on Mars and 2.1 m on the
+        Moon. Falls hurt by <b>impact speed</b>, not height: anything over 6 m/s does damage, which is a
+        1.8 m drop on Earth, 4.8 m on Mars and 11 m on the Moon (v = √(2gh)).</p>
+      <p>The Thruster Pack pushes at 6 m/s². Its thrust-to-weight ratio is 6 / g: 3.7 on the Moon,
+        1.6 on Mars and 0.61 on Earth — where it cannot lift a dog off level ground at all.</p>
+
+      <h3>No air</h3>
+      <p>No air means no drag and no wind: every grain of dust thrown up by a blast follows the same
+        kind of arc as a shot. It also means no sound. What you hear is your dogs' suit-radio telemetry.</p>
+
+      <h3>Plants feel gravity too</h3>
+      <p>Plants sense which way is down. Researchers on Earth study what happens when that signal is
+        taken away with machines such as clinostats, which keep turning a plant so that the direction
+        of gravity it experiences never settles [4]. Spinning the compass is the same idea, played for
+        laughs.</p>
+
+      <h3>Sources</h3>
+      <ol class="refs">
+        <li>NASA NSSDCA, <a href="https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html" target="_blank" rel="noopener">Moon Fact Sheet</a>, surface gravity 1.62 m/s² (accessed 6 Nov 2026).</li>
+        <li>NASA NSSDCA, <a href="https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html" target="_blank" rel="noopener">Mars Fact Sheet</a>, mean surface gravity 3.73 m/s² (accessed 6 Nov 2026).</li>
+        <li>NASA NSSDCA, <a href="https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html" target="_blank" rel="noopener">Earth Fact Sheet</a>: standard gravity 9.80665 m/s² (CODATA 2018) (accessed 6 Nov 2026).</li>
+        <li>Song et al. (2026). Ground-based microgravity simulators for plant research: principles and biological responses. <i>npj Microgravity</i>. <a href="https://doi.org/10.1038/s41526-026-00633-w" target="_blank" rel="noopener">doi:10.1038/s41526-026-00633-w</a></li>
+      </ol>
+      <div class="row"><button class="btn big" data-back>◄ BACK</button></div>
+    </div>
+  </section>
+
+  <!-- =========================== CONTROLS =========================== -->
+  <section id="screen-controls" class="screen">
+    <div class="panel prose">
+      <p class="kicker">CONTROLS</p>
+      <h1>HOW TO DRIVE A ROBOT DOG</h1>
+      <div class="keys">
+        <div><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd><span>walk along the surface</span></div>
+        <div><kbd>Enter</kbd><span>jump</span></div>
+        <div><kbd>↑</kbd> <kbd>↓</kbd> / <kbd>W</kbd> <kbd>S</kbd><span>aim (and steer the Thruster Pack)</span></div>
+        <div><kbd>Space</kbd><span>hold to charge, release to fire</span></div>
+        <div><kbd>1</kbd>–<kbd>8</kbd>, <kbd>0</kbd><span>pick from the kit; 0 skips the turn</span></div>
+        <div><kbd>Q</kbd> <kbd>E</kbd><span>Fetch Ball fuse 1–5 s</span></div>
+        <div><kbd>G</kbd><span>gravity: Moon → Mars → Earth</span></div>
+        <div><kbd>[</kbd> <kbd>]</kbd><span>turn gravity 15°; <kbd>V</kbd> straight down</span></div>
+        <div><kbd>F</kbd><span>◈ Auto AI for the team on turn</span></div>
+        <div><kbd>U</kbd><span>∞ Ammo for everyone</span></div>
+        <div><kbd>Shift</kbd><span>hold to fast-forward flights</span></div>
+        <div><kbd>T</kbd><span>training arc on/off</span></div>
+        <div><kbd>Z</kbd><span>overview; mouse wheel or pinch zooms; drag to look around</span></div>
+        <div><kbd>P</kbd> / <kbd>Esc</kbd><span>pause</span></div>
+        <div><kbd>M</kbd><span>sound</span></div>
+      </div>
+      <p class="dim">Supply Drop: arrow keys, a click or a tap pick the drop point; fire to call it in.
+        On a touch screen, the pads at the bottom walk, jump, aim and fire, and the compass and
+        planet button work by touch.</p>
+      <div class="row"><button class="btn big" data-back>◄ BACK</button></div>
+    </div>
+  </section>
+
+  <!-- ============================= PAUSE ============================= -->
+  <section id="screen-pause" class="screen">
+    <div class="panel narrow">
+      <p class="kicker">PAUSED</p>
+      <h1>MISSION ON HOLD</h1>
+      <div class="col">
+        <button class="btn big" id="b-resume">RESUME ►</button>
+        <button class="btn" id="b-pmanual">FIELD MANUAL</button>
+        <button class="btn" id="b-pcontrols">CONTROLS</button>
+        <button class="btn" id="b-quit">ABANDON MISSION</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ RESULTS ============================ -->
+  <section id="screen-over" class="screen">
+    <div class="panel narrow">
+      <p class="kicker">MISSION REPORT</p>
+      <h1 id="over-title">—</h1>
+      <div id="over-badges"></div>
+      <div id="over-stats"></div>
+      <div class="col">
+        <button class="btn big" id="b-rematch">REMATCH ►</button>
+        <button class="btn" id="b-setup">NEW SETUP</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="js/physics.js"></script>
+<script src="js/terrain.js"></script>
+<script src="js/weapons.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+  <script defer src="https://visitor-analytics.astrobotany.workers.dev/a.js"></script>
+</body>
+</html>
